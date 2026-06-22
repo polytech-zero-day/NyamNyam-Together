@@ -1,19 +1,31 @@
 {
-  "name": "nyamnyam-together",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "nyamnyam-together-server",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "seed": "ts-node --transpile-only scripts/seed-restaurants.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "@supabase/supabase-js": "^2.108.2"
+    "@anthropic-ai/sdk": "^0.105.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0",
+    "jsonwebtoken": "^9.0.0"
   },
   "devDependencies": {
-    "supabase": "^2.107.0"
+    "@types/express": "^4.17.0",
+    "@types/jest": "^29.5.0",
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.0"
   }
 }

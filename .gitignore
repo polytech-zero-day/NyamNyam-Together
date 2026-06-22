@@ -1,5 +1,30 @@
-node_modules/
-.env.local
+# 환경변수 — 시크릿 절대 커밋 금지
 .env
-supabase/.temp/
-AGENTS.md
+.env.local
+.env.*.local
+
+# mTLS 인증서 (토스 콘솔 발급)
+certs/
+
+# 빌드 아웃풋
+dist/
+
+# 의존성
+node_modules/
+
+# TypeScript 증분 빌드 캐시
+*.tsbuildinfo
+
+# 테스트 커버리지
+coverage/
+
+# 로그
+*.log
+logs/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
