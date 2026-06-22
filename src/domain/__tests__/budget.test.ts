@@ -101,9 +101,9 @@ describe('filterByBudget — DB avg_price 확인값 기준', () => {
 describe('filterByBudgetEstimate — category_name 추정 폴백', () => {
   const estPlace = (category_name: string) => ({ category_name });
   const places = [
-    estPlace('음식점 > 분식'),    // 7,000
-    estPlace('주점 > 이자카야'),  // 20,000
-    estPlace('음식점 > 뷔페'),    // 35,000
+    estPlace('음식점 > 분식'), // 7,000
+    estPlace('주점 > 이자카야'), // 20,000
+    estPlace('음식점 > 뷔페'), // 35,000
   ];
 
   it('상한 20000 → 추정가 > 상한×1.2(=24000) 제외 (뷔페만 제외)', () => {

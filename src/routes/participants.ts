@@ -21,7 +21,9 @@ router.post('/:id/join', requireAuth, async (req: AuthRequest, res: Response) =>
     return;
   }
   if (session.status !== 'collecting') {
-    res.status(409).json({ code: 'INVALID_STATUS', message: '투표 수집 중인 세션에만 참여할 수 있습니다' });
+    res
+      .status(409)
+      .json({ code: 'INVALID_STATUS', message: '투표 수집 중인 세션에만 참여할 수 있습니다' });
     return;
   }
 

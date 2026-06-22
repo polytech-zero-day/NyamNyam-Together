@@ -23,9 +23,10 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     };
 
   if (!stationId || stationLat == null || stationLng == null || !title) {
-    res
-      .status(400)
-      .json({ code: 'BAD_REQUEST', message: 'stationId, stationLat, stationLng, title이 필요합니다' });
+    res.status(400).json({
+      code: 'BAD_REQUEST',
+      message: 'stationId, stationLat, stationLng, title이 필요합니다',
+    });
     return;
   }
 
@@ -95,7 +96,9 @@ router.post('/:id/close', requireAuth, async (req: AuthRequest, res: Response) =
     return;
   }
   if (session.status !== 'collecting') {
-    res.status(409).json({ code: 'INVALID_STATUS', message: '투표 수집 중인 상태에서만 종료할 수 있습니다' });
+    res
+      .status(409)
+      .json({ code: 'INVALID_STATUS', message: '투표 수집 중인 상태에서만 종료할 수 있습니다' });
     return;
   }
 

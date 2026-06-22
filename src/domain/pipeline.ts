@@ -19,8 +19,8 @@ export interface Stage1Response {
 
 // restaurants 마스터 테이블 행 (카카오 + 웹서치 보완)
 export interface RestaurantRow {
-  id: string;           // restaurants.id (uuid)
-  kakao_id: string;     // 카카오 place id
+  id: string; // restaurants.id (uuid)
+  kakao_id: string; // 카카오 place id
   station_id: string;
   name: string;
   category_large: string;
@@ -37,7 +37,7 @@ export interface RestaurantRow {
   price_level: number | null;
   avg_price_min: number | null;
   avg_price_max: number | null;
-  mood: string[] | null;        // 웹서치 확인값. null이면 가중치 0
+  mood: string[] | null; // 웹서치 확인값. null이면 가중치 0
   source: string | null;
   source_rating: number | null; // null이면 카카오 accuracy 순서 유지
   source_url: string | null;
@@ -104,10 +104,7 @@ function rankPlaces(
     }));
 }
 
-export function runPipeline(
-  places: RestaurantRow[],
-  responses: Stage1Response[],
-): PipelineResult {
+export function runPipeline(places: RestaurantRow[], responses: Stage1Response[]): PipelineResult {
   if (responses.length === 0 || places.length === 0) {
     return { recommended: [], relaxedConstraints: [] };
   }

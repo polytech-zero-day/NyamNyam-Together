@@ -14,7 +14,9 @@ router.post('/login', async (req: Request, res: Response) => {
   };
 
   if (!authorizationCode || !referrer) {
-    res.status(400).json({ code: 'BAD_REQUEST', message: 'authorizationCode와 referrer가 필요합니다' });
+    res
+      .status(400)
+      .json({ code: 'BAD_REQUEST', message: 'authorizationCode와 referrer가 필요합니다' });
     return;
   }
 

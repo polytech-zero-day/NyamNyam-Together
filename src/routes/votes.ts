@@ -22,7 +22,13 @@ async function isParticipant(sessionId: string, userKey: number): Promise<boolea
 router.post('/:id/votes/stage1', requireAuth, async (req: AuthRequest, res: Response) => {
   const sessionId = req.params.id;
   const userKey = req.userKey!;
-  const { drink, budgetMin, budgetMax, categories = [], mood } = req.body as {
+  const {
+    drink,
+    budgetMin,
+    budgetMax,
+    categories = [],
+    mood,
+  } = req.body as {
     drink?: string;
     budgetMin?: number;
     budgetMax?: number;
@@ -35,7 +41,10 @@ router.post('/:id/votes/stage1', requireAuth, async (req: AuthRequest, res: Resp
     return;
   }
   if (!['drinker', 'ok', 'uncomfortable'].includes(drink)) {
-    res.status(400).json({ code: 'BAD_REQUEST', message: 'drink은 drinker/ok/uncomfortable 중 하나여야 합니다' });
+    res.status(400).json({
+      code: 'BAD_REQUEST',
+      message: 'drink은 drinker/ok/uncomfortable 중 하나여야 합니다',
+    });
     return;
   }
   if (mood && !['quiet', 'any'].includes(mood)) {
@@ -54,12 +63,16 @@ router.post('/:id/votes/stage1', requireAuth, async (req: AuthRequest, res: Resp
     return;
   }
   if (session.status !== 'collecting') {
-    res.status(409).json({ code: 'INVALID_STATUS', message: '투표 수집 중인 세션에만 응답할 수 있습니다' });
+    res
+      .status(409)
+      .json({ code: 'INVALID_STATUS', message: '투표 수집 중인 세션에만 응답할 수 있습니다' });
     return;
   }
 
   if (!(await isParticipant(sessionId, userKey))) {
-    res.status(403).json({ code: 'NOT_PARTICIPANT', message: '세션에 참여한 사용자만 응답할 수 있습니다' });
+    res
+      .status(403)
+      .json({ code: 'NOT_PARTICIPANT', message: '세션에 참여한 사용자만 응답할 수 있습니다' });
     return;
   }
 
@@ -108,12 +121,16 @@ router.post('/:id/votes/stage2', requireAuth, async (req: AuthRequest, res: Resp
     return;
   }
   if (session.status !== 'voting') {
-    res.status(409).json({ code: 'INVALID_STATUS', message: '투표 단계에서만 식당을 선택할 수 있습니다' });
+    res
+      .status(409)
+      .json({ code: 'INVALID_STATUS', message: '투표 단계에서만 식당을 선택할 수 있습니다' });
     return;
   }
 
   if (!(await isParticipant(sessionId, userKey))) {
-    res.status(403).json({ code: 'NOT_PARTICIPANT', message: '세션에 참여한 사용자만 투표할 수 있습니다' });
+    res
+      .status(403)
+      .json({ code: 'NOT_PARTICIPANT', message: '세션에 참여한 사용자만 투표할 수 있습니다' });
     return;
   }
 

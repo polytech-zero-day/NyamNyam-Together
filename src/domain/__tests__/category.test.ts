@@ -2,13 +2,9 @@ import { getEligibleCategories, scoreByCategoryMatch, MIN_CATEGORY_VOTES } from 
 
 describe('getEligibleCategories', () => {
   it('2표 이상 카테고리만 반환', () => {
-    const responses = [
-      ['한식', '중식'],
-      ['한식', '일식'],
-      ['양식'],
-    ];
+    const responses = [['한식', '중식'], ['한식', '일식'], ['양식']];
     const eligible = getEligibleCategories(responses);
-    expect(eligible).toContain('한식');    // 2표
+    expect(eligible).toContain('한식'); // 2표
     expect(eligible).not.toContain('중식'); // 1표
     expect(eligible).not.toContain('일식'); // 1표
     expect(eligible).not.toContain('양식'); // 1표
@@ -37,7 +33,10 @@ describe('getEligibleCategories', () => {
   });
 
   it('빈 문자열·공백 무시', () => {
-    const responses = [['', '한식'], ['한식', ' ']];
+    const responses = [
+      ['', '한식'],
+      ['한식', ' '],
+    ];
     const eligible = getEligibleCategories(responses);
     expect(eligible.some((c) => c === '' || c.trim() === '')).toBe(false);
     expect(eligible).toContain('한식');

@@ -1,9 +1,4 @@
-import {
-  classifyPlaceType,
-  allowedPlaceTypes,
-  filterByPlaceType,
-  DrinkPref,
-} from '../placeType';
+import { classifyPlaceType, allowedPlaceTypes, filterByPlaceType, DrinkPref } from '../placeType';
 
 const place = (category_name: string) => ({ category_name });
 
@@ -79,16 +74,20 @@ describe('filterByPlaceType', () => {
     place('음식점 > 한식'),
     place('음식점 > 일식'),
     place('카페'),
-    place('주점 > 이자카야'),   // compatible
+    place('주점 > 이자카야'), // compatible
     place('주점 > 호프,통닭'), // compatible
-    place('주점 > 바'),         // drink_required
-    place('주점 > 칵테일바'),  // drink_required
+    place('주점 > 바'), // drink_required
+    place('주점 > 칵테일바'), // drink_required
   ];
 
   it('uncomfortable: 음식점·카페만', () => {
     const result = filterByPlaceType(places, ['uncomfortable']);
     expect(result).toHaveLength(3);
-    expect(result.every((p) => p.category_name.startsWith('음식점') || p.category_name.startsWith('카페'))).toBe(true);
+    expect(
+      result.every(
+        (p) => p.category_name.startsWith('음식점') || p.category_name.startsWith('카페'),
+      ),
+    ).toBe(true);
   });
 
   it('전원 drinker: 전부', () => {

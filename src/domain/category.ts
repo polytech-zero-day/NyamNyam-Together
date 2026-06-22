@@ -16,17 +16,12 @@ export function getEligibleCategories(
       }
     }
   }
-  return [...counts.entries()]
-    .filter(([, count]) => count >= minVotes)
-    .map(([cat]) => cat);
+  return [...counts.entries()].filter(([, count]) => count >= minVotes).map(([cat]) => cat);
 }
 
 // 카카오 category_name과 선호 카테고리의 매칭 점수 (정렬 가중치)
 // 매칭 1개당 10점. eligibleCategories 비어있으면 0점(전 장소 동점).
-export function scoreByCategoryMatch(
-  kakaoCategory: string,
-  eligibleCategories: string[],
-): number {
+export function scoreByCategoryMatch(kakaoCategory: string, eligibleCategories: string[]): number {
   if (eligibleCategories.length === 0) return 0;
   const matchCount = eligibleCategories.filter((cat) => kakaoCategory.includes(cat)).length;
   return matchCount * 10;

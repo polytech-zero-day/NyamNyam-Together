@@ -73,16 +73,11 @@ describe('runPipeline — 정상 케이스', () => {
   });
 
   it('rank: 1부터 시작, 오름차순', () => {
-    const places = [
-      mkPlace('1', '한식', '음식점 > 한식'),
-      mkPlace('2', '일식', '음식점 > 일식'),
-    ];
+    const places = [mkPlace('1', '한식', '음식점 > 한식'), mkPlace('2', '일식', '음식점 > 일식')];
     const responses = [mkResponse('ok', 30_000, ['한식']), mkResponse('ok', 30_000, ['한식'])];
     const result = runPipeline(places, responses);
     expect(result.recommended[0].rank).toBe(1);
-    expect(result.recommended[result.recommended.length - 1].rank).toBe(
-      result.recommended.length,
-    );
+    expect(result.recommended[result.recommended.length - 1].rank).toBe(result.recommended.length);
   });
 
   it('카테고리 2표 매칭 장소가 앞에 위치', () => {
@@ -90,19 +85,13 @@ describe('runPipeline — 정상 케이스', () => {
       mkPlace('1', '중식당', '음식점 > 중식'),
       mkPlace('2', '한식당', '음식점 > 한식'),
     ];
-    const responses = [
-      mkResponse('ok', 30_000, ['한식']),
-      mkResponse('ok', 30_000, ['한식']),
-    ];
+    const responses = [mkResponse('ok', 30_000, ['한식']), mkResponse('ok', 30_000, ['한식'])];
     const result = runPipeline(places, responses);
     expect(result.recommended[0].id).toBe('2'); // 한식이 앞
   });
 
   it('place_type이 classifyPlaceType 결과로 채워짐', () => {
-    const places = [
-      mkPlace('1', '카페', '카페'),
-      mkPlace('2', '이자카야', '주점 > 이자카야'),
-    ];
+    const places = [mkPlace('1', '카페', '카페'), mkPlace('2', '이자카야', '주점 > 이자카야')];
     const responses = [mkResponse('drinker', 30_000, [])];
     const result = runPipeline(places, responses);
     const cafe = result.recommended.find((p) => p.id === '1');
@@ -119,10 +108,7 @@ describe('runPipeline — 술 제약 (끝까지 유지)', () => {
       mkPlace('2', '이자카야', '주점 > 이자카야'),
       mkPlace('3', '바', '주점 > 바'),
     ];
-    const responses = [
-      mkResponse('uncomfortable', 30_000, []),
-      mkResponse('ok', 30_000, []),
-    ];
+    const responses = [mkResponse('uncomfortable', 30_000, []), mkResponse('ok', 30_000, [])];
     const result = runPipeline(places, responses);
     const ids = result.recommended.map((p) => p.id);
     expect(ids).toContain('1');

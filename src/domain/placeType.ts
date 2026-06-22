@@ -9,19 +9,19 @@ export type PlaceType = 'drink_required' | 'compatible' | 'general';
 const CATEGORY_PLACE_TYPE_MAP: Array<[string, PlaceType]> = [
   // drink_required: 칵테일바, 와인바, LP바, 펍 등 술이 주목적
   ['주점 > 칵테일바', 'drink_required'],
-  ['주점 > 와인바',   'drink_required'],
-  ['주점 > LP바',     'drink_required'],
-  ['주점 > 바,호프',  'drink_required'],  // "바" 포함 조합
-  ['주점 > 바',       'drink_required'],
-  ['주점 > 펍',       'drink_required'],
+  ['주점 > 와인바', 'drink_required'],
+  ['주점 > LP바', 'drink_required'],
+  ['주점 > 바,호프', 'drink_required'], // "바" 포함 조합
+  ['주점 > 바', 'drink_required'],
+  ['주점 > 펍', 'drink_required'],
   // compatible: 음식+술 양립 — 포차, 고깃집, 이자카야, 호프, 곱창 등
-  ['주점 > 이자카야',       'compatible'],
-  ['주점 > 호프,통닭',      'compatible'],
-  ['주점 > 포장마차',       'compatible'],
-  ['주점 > 실내포차',       'compatible'],
+  ['주점 > 이자카야', 'compatible'],
+  ['주점 > 호프,통닭', 'compatible'],
+  ['주점 > 포장마차', 'compatible'],
+  ['주점 > 실내포차', 'compatible'],
   ['음식점 > 한식 > 육류,고기', 'compatible'],
   ['음식점 > 한식 > 곱창,막창', 'compatible'],
-  ['주점',                  'compatible'],  // 분류 안 된 기타 주점 → compatible
+  ['주점', 'compatible'], // 분류 안 된 기타 주점 → compatible
   // general: 한식·파스타·중식·분식·카페 등
   ['음식점', 'general'],
   ['카페,디저트', 'general'],

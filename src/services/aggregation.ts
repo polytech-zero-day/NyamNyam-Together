@@ -79,40 +79,50 @@ export async function aggregate(sessionId: string): Promise<void> {
 
   const stationId = session.station_id as string;
 
-  const [places, responses] = await Promise.all([
-    getOrFetchRestaurants(stationId),
-    getStage1Responses(sessionId),
-  ]);
+  try {
+    const [places, responses] = await Promise.all([
+      getOrFetchRestaurants(stationId),
+      getStage1Responses(sessionId),
+    ]);
 
-  // 2단계 웹서치 보완은 비동기 백그라운드 (CLAUDE.md §6) — 이번 집계는 차단하지 않고
-  // 다음 세션을 위해 restaurants 웹서치 컬럼(가격·분위기·평점)을 채워둔다.
-  // 사전 배치된 주요 역은 이미 보완되어 있어 이번 집계부터 파이프라인이 정상 작동.
-  void enrichStationRestaurants(stationId).catch((err) =>
-    console.error(`enrichStationRestaurants 실패 (${stationId}):`, err),
-  );
+    // 2단계 웹서치 보완은 비동기 백그라운드 (CLAUDE.md §6) — 이번 집계는 차단하지 않고
+    // 다음 세션을 위해 restaurants 웹서치 컬럼(가격·분위기·평점)을 채워둔다.
+    // 사전 배치된 주요 역은 이미 보완되어 있어 이번 집계부터 파이프라인이 정상 작동.
+    void enrichStationRestaurants(stationId).catch((err) =>
+      console.error(`enrichStationRestaurants 실패 (${stationId}):`, err),
+    );
 
-  const result = runPipeline(places, responses);
+    const result = runPipeline(places, responses);
 
-  if (result.recommended.length > 0) {
-    const budgetCap = computeBudgetCap(responses.map((r) => r.budget_max));
-    const eligibleCategories = getEligibleCategories(responses.map((r) => r.categories));
-    const quietRatio = computeQuietRatio(responses.map((r) => r.mood));
-    const dominantMood: 'quiet' | 'any' = quietRatio > 0.5 ? 'quiet' : 'any';
+    if (result.recommended.length > 0) {
+      const budgetCap = computeBudgetCap(responses.map((r) => r.budget_max));
+      const eligibleCategories = getEligibleCategories(responses.map((r) => r.categories));
+      const quietRatio = computeQuietRatio(responses.map((r) => r.mood));
+      const dominantMood: 'quiet' | 'any' = quietRatio > 0.5 ? 'quiet' : 'any';
 
-    const claudeResults = await getClaudeRecommendations(result.recommended, {
-      budget_max: budgetCap,
-      mood: dominantMood,
-      categories: eligibleCategories,
-    });
+      const claudeResults = await getClaudeRecommendations(result.recommended, {
+        budget_max: budgetCap,
+        mood: dominantMood,
+        categories: eligibleCategories,
+      });
 
-    await storeRecommendations(sessionId, result.recommended, claudeResults);
+      await storeRecommendations(sessionId, result.recommended, claudeResults);
+    }
+
+    await supabase
+      .from('sessions')
+      .update({ status: 'voting' })
+      .eq('id', sessionId)
+      .eq('status', 'aggregating');
+  } catch (err) {
+    // 집계 중 실패 시 aggregating에 영구 고착되지 않도록 collecting으로 롤백 → 재시도 가능.
+    console.error(`aggregate 실패 (${sessionId}) — collecting으로 롤백:`, err);
+    await supabase
+      .from('sessions')
+      .update({ status: 'collecting' })
+      .eq('id', sessionId)
+      .eq('status', 'aggregating');
   }
-
-  await supabase
-    .from('sessions')
-    .update({ status: 'voting' })
-    .eq('id', sessionId)
-    .eq('status', 'aggregating');
 }
 
 /**

@@ -41,10 +41,10 @@ export async function exchangeAuthorizationCode(
   authorizationCode: string,
   referrer: string,
 ): Promise<TokenResponse> {
-  const res = await tossClient().post(
-    '/api-partner/v1/apps-in-toss/user/oauth2/generate-token',
-    { authorizationCode, referrer },
-  );
+  const res = await tossClient().post('/api-partner/v1/apps-in-toss/user/oauth2/generate-token', {
+    authorizationCode,
+    referrer,
+  });
   return {
     accessToken: res.data.accessToken,
     refreshToken: res.data.refreshToken,
@@ -54,19 +54,17 @@ export async function exchangeAuthorizationCode(
 // AccessToken → userKey 조회 (앱 단위 고유 식별자)
 // 개인정보(이름/전화 등) 조회·복호화는 하지 않음 (toss-login.md MVP 단순화)
 export async function getUserKey(accessToken: string): Promise<number> {
-  const res = await tossClient().get(
-    '/api-partner/v1/apps-in-toss/user/oauth2/login-me',
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
+  const res = await tossClient().get('/api-partner/v1/apps-in-toss/user/oauth2/login-me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   return res.data.userKey as number;
 }
 
 // AccessToken 만료 시 재발급
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
-  const res = await tossClient().post(
-    '/api-partner/v1/apps-in-toss/user/oauth2/refresh-token',
-    { refreshToken },
-  );
+  const res = await tossClient().post('/api-partner/v1/apps-in-toss/user/oauth2/refresh-token', {
+    refreshToken,
+  });
   return {
     accessToken: res.data.accessToken,
     refreshToken: res.data.refreshToken,

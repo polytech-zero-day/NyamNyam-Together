@@ -16,7 +16,9 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET!) as { userKey: number };
+    const payload = jwt.verify(token, JWT_SECRET!, { algorithms: ['HS256'] }) as {
+      userKey: number;
+    };
     req.userKey = payload.userKey;
     next();
   } catch {
@@ -25,5 +27,5 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
 }
 
 export function signToken(userKey: number): string {
-  return jwt.sign({ userKey }, JWT_SECRET!, { expiresIn: '1h' });
+  return jwt.sign({ userKey }, JWT_SECRET!, { algorithm: 'HS256', expiresIn: '1h' });
 }

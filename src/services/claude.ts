@@ -86,7 +86,7 @@ ${candidates
       model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       // web_search_20260209: dynamic filtering variant, correct for claude-sonnet-4-6
-      tools: [{ type: 'web_search_20260209' as 'web_search_20260209', name: 'web_search' }],
+      tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }],
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -115,8 +115,7 @@ ${candidates
         kakao_id: r.kakao_id,
         place_name: r.place_name,
         reason: r.reason ?? null,
-        confidence:
-          r.confidence === 'high' || r.confidence === 'medium' ? r.confidence : null,
+        confidence: r.confidence === 'high' || r.confidence === 'medium' ? r.confidence : null,
         source: r.source ?? null,
         source_url: r.source_url ?? null,
       }));
@@ -216,16 +215,15 @@ function normalizeEnrichment(raw: Record<string, unknown>): RestaurantEnrichment
 
   // source_url 없으면 그 식당 보완 필드 전부 null (db-schema.md 저장 원칙)
   const sourceUrl =
-    typeof raw.source_url === 'string' && raw.source_url.startsWith('http')
-      ? raw.source_url
-      : null;
+    typeof raw.source_url === 'string' && raw.source_url.startsWith('http') ? raw.source_url : null;
   if (!sourceUrl) return nullEnrichment(kakao_id);
 
   const intOrNull = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null;
 
   const priceLevelRaw = intOrNull(raw.price_level);
-  const price_level = priceLevelRaw !== null && priceLevelRaw >= 1 && priceLevelRaw <= 4 ? priceLevelRaw : null;
+  const price_level =
+    priceLevelRaw !== null && priceLevelRaw >= 1 && priceLevelRaw <= 4 ? priceLevelRaw : null;
 
   const mood =
     Array.isArray(raw.mood) && raw.mood.length > 0
@@ -247,9 +245,7 @@ function normalizeEnrichment(raw: Record<string, unknown>): RestaurantEnrichment
   };
 }
 
-async function enrichBatch(
-  batch: RestaurantEnrichmentInput[],
-): Promise<RestaurantEnrichment[]> {
+async function enrichBatch(batch: RestaurantEnrichmentInput[]): Promise<RestaurantEnrichment[]> {
   const userPrompt = `다음 식당들을 웹서치로 조사해줘:
 ${batch
   .map((r) => `- kakao_id: ${r.kakao_id} | ${r.name} | ${r.category_name} | ${r.address ?? ''}`)
@@ -263,7 +259,7 @@ ${batch
       model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       // web_search_20260209: dynamic filtering variant, correct for claude-sonnet-4-6
-      tools: [{ type: 'web_search_20260209' as 'web_search_20260209', name: 'web_search' }],
+      tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }],
       system: ENRICH_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     });

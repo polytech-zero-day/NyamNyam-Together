@@ -25,8 +25,8 @@ interface KakaoDocument {
   place_name: string;
   category_name: string;
   distance: string;
-  x: string;         // 경도
-  y: string;         // 위도
+  x: string; // 경도
+  y: string; // 위도
   place_url: string;
   address_name: string;
   road_address_name: string;
@@ -49,8 +49,8 @@ async function fetchPlacesFromKakao(lat: number, lng: number): Promise<KakaoDocu
     const res = await kakaoClient.get('/search/category.json', {
       params: {
         category_group_code: 'FD6',
-        x: lng,   // 카카오: x = 경도
-        y: lat,   // 카카오: y = 위도
+        x: lng, // 카카오: x = 경도
+        y: lat, // 카카오: y = 위도
         radius: SEARCH_RADIUS,
         sort: 'accuracy',
         page,
@@ -64,10 +64,7 @@ async function fetchPlacesFromKakao(lat: number, lng: number): Promise<KakaoDocu
 }
 
 // 카카오 응답을 restaurants 테이블에 upsert (카카오 컬럼만 갱신, 웹서치 컬럼 보존)
-async function upsertKakaoRestaurants(
-  stationId: string,
-  docs: KakaoDocument[],
-): Promise<void> {
+async function upsertKakaoRestaurants(stationId: string, docs: KakaoDocument[]): Promise<void> {
   if (docs.length === 0) return;
 
   const rows = docs.map((d) => {
@@ -115,19 +112,18 @@ export async function getOrFetchRestaurants(stationId: string): Promise<Restaura
   if (metaError || !meta) throw new Error(`station_restaurants not found: ${stationId}`);
 
   const isExpired =
-    !meta.kakao_fetched_at ||
-    Date.now() - new Date(meta.kakao_fetched_at).getTime() > TTL_MS;
+    !meta.kakao_fetched_at || Date.now() - new Date(meta.kakao_fetched_at).getTime() > TTL_MS;
 
   if (isExpired) {
-    const docs = await fetchPlacesFromKakao(
-      Number(meta.station_lat),
-      Number(meta.station_lng),
-    );
+    const docs = await fetchPlacesFromKakao(Number(meta.station_lat), Number(meta.station_lng));
     await upsertKakaoRestaurants(stationId, docs);
-    await supabase.from('station_restaurants').update({
-      kakao_fetched_at: new Date().toISOString(),
-      restaurant_count: docs.length,
-    }).eq('station_id', stationId);
+    await supabase
+      .from('station_restaurants')
+      .update({
+        kakao_fetched_at: new Date().toISOString(),
+        restaurant_count: docs.length,
+      })
+      .eq('station_id', stationId);
   }
 
   const { data: rows, error } = await supabase
@@ -162,8 +158,7 @@ export async function enrichStationRestaurants(
     .single();
 
   const isFresh =
-    meta?.web_enriched_at &&
-    Date.now() - new Date(meta.web_enriched_at).getTime() < TTL_MS;
+    meta?.web_enriched_at && Date.now() - new Date(meta.web_enriched_at).getTime() < TTL_MS;
   if (!opts.force && isFresh) return; // 보완 캐시 신선 → 스킵
 
   const { data: rows, error } = await supabase
@@ -215,8 +210,10 @@ export async function ensureStationExists(
   lat: number,
   lng: number,
 ): Promise<void> {
-  await supabase.from('station_restaurants').upsert(
-    { station_id: stationId, station_lat: lat, station_lng: lng },
-    { onConflict: 'station_id', ignoreDuplicates: true },
-  );
+  await supabase
+    .from('station_restaurants')
+    .upsert(
+      { station_id: stationId, station_lat: lat, station_lng: lng },
+      { onConflict: 'station_id', ignoreDuplicates: true },
+    );
 }
