@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import { supabase } from '../config/supabase';
+import { classifyPlaceType } from '../domain/placeType';
 import type { Candidate, Station } from '../domain/types';
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
@@ -164,12 +165,14 @@ export async function discoverAndFetch(
     .filter((p) => p.businessStatus !== 'CLOSED_PERMANENTLY')
     .map((p) => ({ ...p, id: p.movedPlaceId ?? p.id }));
 
-  // place_id만 upsert (ToS: 콘텐츠 미저장). source='google', station_id만.
+  // place_id + place_type(가공값)만 upsert. 구글 콘텐츠(이름·평점·가격 등)는 저장 안 함(ToS).
+  // place_type은 google types를 우리 분류로 가공한 값이라 저장 허용 (db-schema.md places.place_type).
   if (live.length > 0) {
     const rows = live.map((p) => ({
       source: 'google' as const,
       google_place_id: p.id,
       station_id: station.id,
+      place_type: classifyPlaceType(p.types ?? [], p.primaryType ?? null),
     }));
     await supabase.from('places').upsert(rows, { onConflict: 'google_place_id' });
   }

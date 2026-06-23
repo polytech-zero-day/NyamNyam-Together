@@ -6,6 +6,8 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { requireAuth, AuthRequest } from '../middleware/auth';
+import { classifyPlaceType } from '../domain/placeType';
+import { googleTypesForCategory } from '../domain/category';
 import type { PlaceSource, PlaceType } from '../types/database.types';
 
 const router = Router();
@@ -55,8 +57,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       category: category ?? null,
       price_level: priceLevel ?? null,
       open_date: openDate ?? null,
-      // 등록 분류로 place_type 직접 지정(없으면 null → 추후 사람 검수, domain-rules.md §1)
-      place_type: (placeType as PlaceType | undefined) ?? null,
+      // place_type 계산·저장: body placeType 우선, 없으면 category→google types→분류.
+      // 매핑 실패(미지/빈 category) 시 classifyPlaceType이 general로 폴백 (domain-rules.md §1).
+      place_type:
+        (placeType as PlaceType | undefined) ??
+        classifyPlaceType(googleTypesForCategory(category ?? '')),
       status: 'active',
     })
     .select('id')

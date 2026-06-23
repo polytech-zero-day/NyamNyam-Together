@@ -1,4 +1,5 @@
 import { classifyPlaceType, allowedPlaceTypes, filterByPlaceType, placeTypeOf } from '../placeType';
+import { googleTypesForCategory } from '../category';
 import type { Candidate, PlaceType } from '../types';
 
 const cand = (types: string[], overrides: Partial<Candidate> = {}): Candidate => ({
@@ -46,6 +47,27 @@ describe('classifyPlaceType (google types)', () => {
 
   it('drink_required가 compatible보다 우선', () => {
     expect(classifyPlaceType(['barbecue_restaurant', 'bar'])).toBe('drink_required');
+  });
+});
+
+// owner/community 등록 식당: 한글 category → google types → place_type 계산 (routes/places.ts)
+describe('등록 식당 place_type 계산 (category 경유, general 폴백)', () => {
+  const fromCategory = (korean: string): PlaceType =>
+    classifyPlaceType(googleTypesForCategory(korean));
+
+  it('술집 → drink_required', () => {
+    expect(fromCategory('술집')).toBe('drink_required');
+  });
+  it('고기·구이 → compatible', () => {
+    expect(fromCategory('고기·구이')).toBe('compatible');
+  });
+  it('한식/카페·디저트 → general', () => {
+    expect(fromCategory('한식')).toBe('general');
+    expect(fromCategory('카페·디저트')).toBe('general');
+  });
+  it('미지/빈 category → general 폴백', () => {
+    expect(fromCategory('죽')).toBe('general');
+    expect(fromCategory('')).toBe('general');
   });
 });
 
