@@ -1,186 +1,152 @@
 # DB 스키마 (db-schema.md)
 
-> Supabase(PostgreSQL). supabase-js로 접근. 실제 생성 SQL은 `supabase/migrations/`.
-> 토스 로그인(userKey 식별) + 역 단위 캐싱(TTL) 반영.
+> Supabase(PostgreSQL). supabase-js로 접근. 생성 SQL은 `supabase/migrations/`.
+> ⚠️ **테이블 설계·RLS는 우리(A파트) 소유.** 단, sessions/participants/votes 위의 **상태전환·투표 집계 로직은 B파트** 소유다(우리는 스키마만 설계, 그 로직은 구현하지 않음).
+> 우리 추천 로직이 **쓰는** 테이블은 places / station_places / recommendations 다.
 
 ## 테이블 개요
 
 ```
-sessions (모임)
-  ├─ participants (참여자, userKey 식별)
-  │    └─ votes (투표: 1단계 응답 + 2단계 식당 👍)
-  └─ recommendations (추천 후보, Claude ai_reason 포함)
-station_restaurants (역 단위 카카오 캐시, TTL 메타)
-restaurants (정규화된 식당 마스터 — 카카오 + 웹서치 보완)
+sessions (모임, sort_mode)              ← 스키마=우리, 상태전환 로직=B
+  ├─ participants (참여자, userKey)      ← 스키마=우리, 입장 로직=B/공통
+  │    └─ votes (1·2단계 투표)            ← 스키마=우리, 집계 로직=B
+  └─ recommendations (추천 후보 스냅샷)   ← 우리가 작성
+station_places (역 단위 place_id 캐시)    ← 우리
+places (식당 마스터: google/owner/community) ← 우리
 ```
+
+> 이전 `restaurants`(카카오+콘텐츠 저장) 폐기 → `places`(출처 구분, 콘텐츠 미저장)로 대체.
 
 ---
 
-## 1. sessions — 모임(투표 세션)
+## 1. sessions — 모임  *(스키마 우리 / 상태전환 B)*
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | uuid (PK) | 세션 ID |
-| host_user_key | bigint | 생성자(토스 userKey) |
+| host_user_key | bigint | 생성자 userKey (공통 인증에서 발급) |
 | title | text | 모임명 |
-| purpose | text | 목적(friend/couple/parents/etc) — MVP는 friend만 |
-| min_participants | int | 최소 인원(집계 트리거 기준) |
-| station_id | text | 위치(서울 주요 역 식별자) |
-| deadline | timestamptz | 마감 시간 |
-| status | text | collecting / aggregating / voting / closed |
-| created_at | timestamptz | 생성 시각 |
+| purpose | text | 목적 — MVP는 friend |
+| min_participants | int | 최소 인원 |
+| station_id | text | 위치(역) 식별자 |
+| station_lat / station_lng | numeric | 역 좌표 (Nearby 호출용) |
+| deadline | timestamptz | 마감 시간 (마감 로직은 B) |
+| status | text | collecting / aggregating / voting / closed (전환은 B) |
+| **sort_mode** | text | 후보 정렬: review_count(기본)/rating/random — **추천 화면용(우리)** |
+| **sort_seed** | int | random 정렬 시드(집계 시 1회 고정) |
+| created_at | timestamptz | |
 
-- status 전환: collecting→(종료 트리거)→aggregating→voting→(마무리)→closed
-- deadline은 Lazy 체크(접근 시 now 비교). 수동 종료는 status 직접 변경.
+> 상태 전환·마감 트리거는 B파트 RPC가 소유. 우리는 status='aggregating' 진입 시 recommend 서비스가 호출됨.
 
 ---
 
-## 2. participants — 참여자
+## 2. participants — 참여자  *(스키마 우리 / 입장 로직 B·공통)*
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
-| id | uuid (PK) | 참여자 레코드 ID |
-| session_id | uuid (FK→sessions) | 소속 세션 |
-| user_key | bigint | 토스 userKey (식별자) |
-| joined_at | timestamptz | 입장 시각 |
+| id | uuid (PK) | |
+| session_id | uuid (FK→sessions) | |
+| user_key | bigint | 공통 인증이 발급한 식별자 |
+| joined_at | timestamptz | |
 
-- **(session_id, user_key) UNIQUE** — 같은 세션에 같은 사용자 중복 입장 방지.
+- **(session_id, user_key) UNIQUE**.
 
 ---
 
-## 3. votes — 투표
+## 3. votes — 투표  *(스키마 우리 / 집계 로직 B)*
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | uuid (PK) | |
 | session_id | uuid (FK) | |
-| user_key | bigint | 누가 투표했는지 |
+| user_key | bigint | |
 | stage | int | 1=제약 응답, 2=식당 👍 |
-| drink | text | (stage1) 술 수용도: drinker/ok/uncomfortable |
-| budget_min | int | (stage1) 1인 예산 하한 |
-| budget_max | int | (stage1) 1인 예산 상한 |
-| categories | jsonb | (stage1) 음식 카테고리 다중선택 (예: ["한식","고기"]) |
-| mood | text | (stage1) 분위기: quiet/any |
-| restaurant_id | uuid | (stage2) 투표한 후보 식당 (FK→recommendations) |
+| drink | text | (stage1) drinker/ok/uncomfortable |
+| budget_min / budget_max | int | (stage1) 1인 예산 범위 |
+| categories | jsonb | (stage1) 한글 분류 다중선택 |
+| mood | text | (stage1) quiet/any |
+| recommendation_id | uuid | (stage2) 투표 후보 (FK→recommendations) |
 | created_at | timestamptz | |
 
-- stage 컬럼으로 1·2단계를 한 테이블에 통합(단순화).
-- **stage1: (session_id, user_key) UNIQUE** — 1인 1응답. stage2도 동일하게 1인 1표.
+- stage1: (session_id, user_key) UNIQUE. stage2도 1인 1표.
+- ⚠️ **votes 집계(예산 범위 종합·다수결·표수 계산)는 B파트가 수행**한다. 우리 도메인은 votes를 직접 읽어 집계하지 않고, **B가 산출한 제약 객체**를 입력으로 받는다(domain-rules.md 0).
 
 ---
 
-## 4. restaurants — 식당 마스터 (카카오 + 웹서치 보완)
+## 4. places — 식당 마스터 (출처 구분)  *(우리)*
 
-> 카카오 API 데이터를 정규화해서 저장. 웹서치로 보완된 컬럼은 null 허용.
-> **저장 원칙: 확인된 것만. 추정값 저장 금지. 불확실하면 null.**
+> 구글 식당은 place_id + 가공값만(콘텐츠 미저장). 등록 식당은 first-party 전체 저장.
 
-| 컬럼 | 타입 | null | 출처 | 설명 |
+| 컬럼 | 타입 | null | 적용 출처 | 설명 |
 |---|---|---|---|---|
-| id | uuid (PK) | - | - | |
-| kakao_id | text (UNIQUE) | NO | 카카오 | 카카오 place id |
-| station_id | text (FK→station_restaurants) | NO | 카카오 | 역 식별자 |
-| name | text | NO | 카카오 | 상호명 |
-| category_large | text | NO | 카카오 | "음식점" |
-| category_mid | text | YES | 카카오 | "한식" |
-| category_small | text | YES | 카카오 | "육류,고기요리" |
-| category_name | text | NO | 카카오 | 원문 전체 (파이프라인 입력) |
-| address | text | YES | 카카오 | 지번 주소 |
-| road_address | text | YES | 카카오 | 도로명 주소 |
-| phone | text | YES | 카카오 | 전화번호 |
-| lat | numeric | NO | 카카오 | 위도 (카카오 y) |
-| lng | numeric | NO | 카카오 | 경도 (카카오 x) |
-| distance_m | integer | YES | 카카오 | 역으로부터 거리(m) |
-| kakao_url | text | YES | 카카오 | place_url |
-| price_level | integer | YES | 웹서치 | 1(저)~4(고). 미확인 null |
-| avg_price_min | integer | YES | 웹서치 | 최소 가격(원). 미확인 null |
-| avg_price_max | integer | YES | 웹서치 | 최대 가격(원). 미확인 null |
-| mood | text[] | YES | 웹서치 | ["조용한","룸있음"]. 미확인 null |
-| source | text | YES | 웹서치 | "다이닝코드" / "식신" |
-| source_rating | numeric | YES | 웹서치 | 출처 평점. 미확인 null |
-| source_url | text | YES | 웹서치 | 출처 URL. 없으면 null |
-| crawled_at | timestamptz | YES | 시스템 | 웹서치 수집 시점 |
-| created_at | timestamptz | NO | 시스템 | 최초 저장 시각 |
+| id | uuid (PK) | - | 전체 | 내부 식당 ID |
+| source | text | NO | 전체 | google / owner / community |
+| google_place_id | text (UNIQUE) | YES | google | source=google이면 필수. **ToS상 유일 영구 저장 필드** |
+| station_id | text (FK→station_places) | NO | 전체 | 역 식별자 |
+| place_type | text | YES | 전체 | 우리 분류 drink_required/compatible/general (가공값, google·owner 모두 저장) |
+| name | text | YES | owner/community | 등록 식당만 (google=null, 라이브) |
+| lat / lng | numeric | YES | owner/community | 등록 식당만 |
+| category | text | YES | owner/community | 한글 분류 (등록 식당만) |
+| price_level | int | YES | owner/community | 1~4 점주 신고 |
+| open_date | date | YES | owner/community | 개업일 — longevity 신호 |
+| status | text | YES | owner/community | active/closed |
+| created_at | timestamptz | NO | 전체 | |
 
-**null 처리 원칙:**
-- `avg_price_min/max`가 null → 예산 필터 미적용, Claude 판단에 위임
-- `source_rating`이 null → 카카오 accuracy 정렬 순서 유지
-- `mood`가 null → 분위기 필터 미적용
-- `source_url` 없으면 해당 식당 웹서치 컬럼 전부 null 처리
+- **google 행**: google_place_id·station_id·place_type(google types 가공값으로 계산해 저장)만. 이름·평점·가격·리뷰수는 저장 금지 → 라이브 조회.
+- **owner/community 행**: 콘텐츠 전체 저장 가능(first-party, ToS 무관).
 
 ---
 
-## 5. recommendations — 추천 후보(집계 결과)
+## 5. recommendations — 추천 후보 스냅샷  *(우리가 작성)*
+
+> 구글 콘텐츠 비정규화 저장 안 함 — place 참조 + 우리 생성/파생값만.
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | uuid (PK) | |
-| session_id | uuid (FK→sessions) | 어느 세션의 후보인지 |
-| restaurant_id | uuid (FK→restaurants) | 식당 마스터 참조 |
-| name | text | 가게명 (비정규화 스냅샷) |
-| category_name | text | 카카오 category_name 원문 |
-| place_type | text | drink_required/compatible/general |
-| lat | double precision | 위도 |
-| lng | double precision | 경도 |
-| distance | int | 역에서 거리(m) |
-| place_url | text | 카카오 상세 URL |
-| relaxed | boolean | 조건 완화로 포함됐는지 |
-| rank | int | 정렬 순위 |
-| ai_reason | text | Claude가 생성한 추천 이유 한 줄 |
-| confidence | text | high / medium (low는 저장 안 함) |
+| session_id | uuid (FK→sessions) | |
+| place_id | uuid (FK→places) | 내부 식당 참조 |
+| place_type | text | 집계 시점 스냅샷 |
+| rank | int | 파이프라인 순위 |
+| relaxed | boolean | 조건 완화 포함 여부 |
+| review_count_at_agg | int | 집계 시점 userRatingCount 스냅샷 — **정렬·표본보정용 내부 수치** |
+| rating_at_agg | numeric | 집계 시점 rating 스냅샷 — 정렬용 |
 | created_at | timestamptz | |
 
-- 집계 시 2단 파이프라인 결과 상위 3~10개 저장. 화면엔 상위 3~4개 노출.
-- confidence: low는 최종 추천에서 제외 (저장하지 않음).
-- votes.stage2.restaurant_id가 이 테이블을 참조.
+> *_at_agg는 코드가 순위를 매기기 위한 내부 파생 수치다(사용자 재노출용 콘텐츠 캐시 아님).
+> 화면 노출용 최신 이름·평점은 표시 시점에 라이브 조회(최종 3~4곳, Place Details).
+- 상위 3~10개 저장, 화면엔 3~4개(sort_mode 정렬). stage2 투표(B)가 recommendation_id로 참조.
 
 ---
 
-## 6. station_restaurants — 역 단위 캐시 메타
-
-> payload jsonb 대신 restaurants 테이블에 정규화 저장.
-> 이 테이블은 TTL 메타 관리용으로만 사용.
+## 6. station_places — 역 단위 place_id 디스커버리 메타  *(우리)*
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
-| station_id | text (PK) | 역 식별자 (캐시 키) |
-| kakao_fetched_at | timestamptz | 카카오 마지막 호출 시각 (TTL 30일) |
-| web_enriched_at | timestamptz | 웹서치 보완 마지막 시각 (TTL 30일) |
-| restaurant_count | int | 저장된 식당 수 |
+| station_id | text (PK) | 캐시 키 |
+| station_lat / station_lng | numeric | Nearby 호출 좌표 |
+| places_discovered_at | timestamptz | 마지막 Nearby 시각 (TTL 30일) |
+| place_count | int | 디스커버리된 place 수 |
 
-- Lazy TTL: 조회 시 `now - kakao_fetched_at > 30일`이면 카카오 재호출 후 restaurants upsert.
-- `web_enriched_at`이 null이거나 만료면 Claude 웹서치 보완 실행.
-- 주요 역은 `scripts/seed-restaurants.ts`로 사전 배치.
+- TTL은 "역 재탐색 주기"에만 적용. **place_id는 만료·삭제하지 않는다(영구).**
 
 ---
 
-## RLS 정책
+## RLS 정책  *(우리 소유)*
 
-> 토스 로그인 기반이지만, 세션 데이터는 링크로 공유되므로 "세션 단위 접근"을 허용한다.
-
-- **sessions/participants/votes/recommendations**: 해당 `session_id`를 아는 사용자는 읽기 가능. 쓰기는 인증된 userKey로 제한.
-- **restaurants**: 모든 인증 사용자 읽기 가능. 쓰기는 service_role만.
-- **타 세션 데이터 차단**: session_id가 다르면 접근 불가.
-- **service_role 키는 서버에서만** 사용. 민감 작업(집계 등)은 서버가 service_role로 수행.
+- sessions/participants/votes/recommendations: 해당 session_id를 아는 사용자 읽기 가능. 쓰기는 인증 userKey로 제한.
+- places: 인증 사용자 읽기 가능. google 행 쓰기 service_role만. owner/community 등록 쓰기는 인증 userKey(MVP는 스텁이라 service_role 경유).
+- 타 세션 데이터 차단(session_id 다르면 불가). service_role 키는 서버에서만.
 
 ---
 
 ## 인덱스
 
 ```sql
--- participants
 CREATE UNIQUE INDEX ON participants(session_id, user_key);
-
--- votes
 CREATE INDEX ON votes(session_id, user_key, stage);
-
--- recommendations
 CREATE INDEX ON recommendations(session_id, rank);
-
--- restaurants
-CREATE UNIQUE INDEX ON restaurants(kakao_id);
-CREATE INDEX ON restaurants(station_id);
-CREATE INDEX ON restaurants(station_id, source_rating DESC NULLS LAST);
-
--- station_restaurants
--- PK가 station_id이므로 별도 인덱스 불필요
+CREATE UNIQUE INDEX ON places(google_place_id) WHERE google_place_id IS NOT NULL;
+CREATE INDEX ON places(station_id);
+CREATE INDEX ON places(source);
 ```

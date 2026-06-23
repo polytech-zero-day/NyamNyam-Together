@@ -1,22 +1,17 @@
 openapi: 3.0.3
 info:
-  title: 냠냠투게더 API
-  version: 0.1.0
+  title: 냠냠투게더 API — A·C 파트 (추천 서버)
+  version: 0.2.0
   description: |
-    모임 식당 결정 서비스(앱인토스 미니앱) 백엔드 API.
-    인증은 토스 로그인 → 서버 발급 JWT(Bearer). 상세 규칙은 `docs/api-spec.md`.
-
-    상태 흐름:
-    `collecting` → (close 또는 deadline) → `aggregating` → `voting` → `closed`
+    이 명세는 **우리 소유 엔드포인트(추천 조회·정렬, 식당 등록)** 만 다룬다.
+    인증/세션/참여/투표 엔드포인트는 공통/B파트 소유 → 여기서는 제외.
+    상세는 `docs/api-spec.md`. 인증은 토스 로그인 → 서버 발급 JWT(Bearer).
 servers:
   - url: http://localhost:3000
     description: 로컬 개발
 tags:
-  - name: 인증
-  - name: 세션
-  - name: 참여
-  - name: 투표
   - name: 추천
+  - name: 등록
 
 components:
   securitySchemes:
@@ -24,350 +19,63 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: 서버가 발급한 JWT. `POST /auth/login` 응답의 token.
   schemas:
     Error:
       type: object
       properties:
         code: { type: string, example: BAD_REQUEST }
-        message: { type: string, example: 요청이 올바르지 않습니다 }
+        message: { type: string }
       required: [code, message]
-    Session:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        host_user_key: { type: integer, format: int64, description: 생성자 토스 userKey }
-        title: { type: string }
-        purpose: { type: string, nullable: true }
-        min_participants: { type: integer, example: 2 }
-        station_id: { type: string, example: 강남역 }
-        deadline: { type: string, format: date-time, nullable: true }
-        status:
-          type: string
-          enum: [collecting, aggregating, voting, closed]
-        created_at: { type: string, format: date-time }
-        participantCount: { type: integer, description: 'GET /sessions/:id 응답에만 포함' }
     Recommendation:
       type: object
+      description: 후보 스냅샷 + 표시 시점 라이브 합성 필드(name/rating 등).
       properties:
         id: { type: string, format: uuid }
         session_id: { type: string, format: uuid }
-        restaurant_id: { type: string, format: uuid }
+        place_id: { type: string, format: uuid, description: places.id 참조 }
+        source: { type: string, enum: [google, owner, community] }
+        place_type: { type: string, enum: [drink_required, compatible, general] }
+        rank: { type: integer }
+        relaxed: { type: boolean, description: 조건 완화 포함 여부 }
+        voteCount: { type: integer, description: stage2 득표 수(B 집계) }
+        # 아래는 표시 시점 라이브 조회 합성값 (DB 저장 안 함)
+        name: { type: string, nullable: true, description: 라이브(google) 또는 등록값 }
+        rating: { type: number, nullable: true, description: 라이브 google rating }
+        userRatingCount: { type: integer, nullable: true, description: 라이브 리뷰 수 }
+        priceLevel: { type: integer, nullable: true }
+        distance_m: { type: integer, nullable: true }
+    Place:
+      type: object
+      properties:
+        placeId: { type: string, format: uuid }
+        source: { type: string, enum: [owner, community] }
+        stationId: { type: string }
         name: { type: string }
-        category_name: { type: string, nullable: true }
-        place_type:
-          type: string
-          enum: [drink_required, compatible, general]
         lat: { type: number }
         lng: { type: number }
-        distance: { type: integer, nullable: true, description: 역에서 거리(m) }
-        place_url: { type: string, nullable: true }
-        relaxed: { type: boolean, description: 조건 완화로 포함됐는지 }
-        rank: { type: integer }
-        ai_reason: { type: string, nullable: true, description: Claude 추천 이유 한 줄 }
-        confidence: { type: string, enum: [high, medium], nullable: true }
-        created_at: { type: string, format: date-time }
-        voteCount: { type: integer, description: stage2 득표 수 }
-  responses:
-    Unauthorized:
-      description: 인증 필요 / 토큰 무효
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          example: { code: UNAUTHORIZED, message: 인증이 필요합니다 }
-    NotFound:
-      description: 리소스 없음
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          example: { code: NOT_FOUND, message: 세션을 찾을 수 없습니다 }
+        category: { type: string, nullable: true }
+        priceLevel: { type: integer, nullable: true }
+        openDate: { type: string, format: date, nullable: true }
 
 security:
   - bearerAuth: []
 
 paths:
-  /auth/login:
-    post:
-      tags: [인증]
-      summary: 토스 인가코드 → JWT 발급
-      description: 클라이언트가 appLogin으로 받은 인가코드를 전달. 서버가 토큰 교환·userKey 확보 후 JWT 반환.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [authorizationCode, referrer]
-              properties:
-                authorizationCode: { type: string }
-                referrer:
-                  { type: string, enum: [DEFAULT, SANDBOX], description: DEFAULT(토스앱)/SANDBOX }
-      responses:
-        '200':
-          description: 발급 성공
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token: { type: string, description: JWT (1시간 유효) }
-        '400':
-          description: 필수값 누락
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example: { code: BAD_REQUEST, message: authorizationCode와 referrer가 필요합니다 }
-        '401':
-          description: 토스 로그인 실패
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example: { code: AUTH_FAILED, message: 토스 로그인에 실패했습니다 }
-
-  /sessions:
-    post:
-      tags: [세션]
-      summary: 모임 생성
-      description: 세션 생성 + station_restaurants 역 좌표 등록 + 생성자 자동 입장.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [stationId, stationLat, stationLng, title]
-              properties:
-                stationId: { type: string, example: 강남역, description: 위치(역) 식별자 = 캐시 키 }
-                stationLat: { type: number, example: 37.497942 }
-                stationLng: { type: number, example: 127.027621 }
-                title: { type: string, example: 강남 점심 모임 }
-                minParticipants: { type: integer, default: 2 }
-                purpose: { type: string, nullable: true }
-                deadline:
-                  {
-                    type: string,
-                    format: date-time,
-                    nullable: true,
-                    description: null이면 수동 종료만,
-                  }
-      responses:
-        '201':
-          description: 생성됨
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  sessionId: { type: string, format: uuid }
-                  inviteLink: { type: string, example: '/sessions/:id/join' }
-        '400':
-          description: 필수값 누락
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /sessions/{id}:
-    get:
-      tags: [세션]
-      summary: 모임 정보·현황 조회
-      description: 접근 시 마감 Lazy 체크(now > deadline → 집계 트리거).
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Session' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /sessions/{id}/close:
-    post:
-      tags: [세션]
-      summary: 생성자 수동 종료 → 집계 트리거
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        '200':
-          description: 집계 시작
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { message: { type: string } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403':
-          description: 생성자 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example: { code: FORBIDDEN, message: 생성자만 종료할 수 있습니다 }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: 수집 상태 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example:
-                { code: INVALID_STATUS, message: 투표 수집 중인 상태에서만 종료할 수 있습니다 }
-
-  /sessions/{id}/progress:
-    get:
-      tags: [세션]
-      summary: 응답 진행률 (N/M)
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  responded: { type: integer, description: stage1 응답 인원 }
-                  total: { type: integer, description: 전체 참여자 }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-
-  /sessions/{id}/join:
-    post:
-      tags: [참여]
-      summary: 세션 입장 (userKey, 중복 방지)
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        '201':
-          description: 입장 완료
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { message: { type: string } }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: 이미 참여했거나 수집 상태 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              examples:
-                already: { value: { code: ALREADY_JOINED, message: 이미 참여한 세션입니다 } }
-                status:
-                  {
-                    value:
-                      { code: INVALID_STATUS, message: 투표 수집 중인 세션에만 참여할 수 있습니다 },
-                  }
-
-  /sessions/{id}/votes/stage1:
-    post:
-      tags: [투표]
-      summary: 1단계 제약 응답 (1인 1회)
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [drink, budgetMax]
-              properties:
-                drink:
-                  type: string
-                  enum: [drinker, ok, uncomfortable]
-                  description: 술 수용도 ①drinker ②ok ③uncomfortable
-                budgetMin: { type: integer, nullable: true }
-                budgetMax: { type: integer, example: 20000 }
-                categories:
-                  type: array
-                  items: { type: string }
-                  example: [한식, 고기]
-                mood: { type: string, enum: [quiet, any], nullable: true }
-      responses:
-        '201':
-          description: 응답 완료
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { message: { type: string } }
-        '400':
-          description: 잘못된 값
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403':
-          description: 참여자 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example: { code: NOT_PARTICIPANT, message: 세션에 참여한 사용자만 응답할 수 있습니다 }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: 이미 응답함 / 수집 상태 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example: { code: ALREADY_VOTED, message: 이미 응답한 세션입니다 }
-
-  /sessions/{id}/votes/stage2:
-    post:
-      tags: [투표]
-      summary: 2단계 식당 👍 (1인 1표)
-      description: status가 voting일 때만. restaurantId는 추천 후보(recommendations.id).
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [restaurantId]
-              properties:
-                restaurantId: { type: string, format: uuid }
-      responses:
-        '201':
-          description: 투표 완료
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { message: { type: string } }
-        '400':
-          description: restaurantId 누락
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403':
-          description: 참여자 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '404':
-          description: 세션/후보 없음
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '409':
-          description: 이미 투표함 / 투표 단계 아님
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              example: { code: ALREADY_VOTED, message: 이미 투표했습니다 }
-
   /sessions/{id}/recommendations:
     get:
       tags: [추천]
-      summary: 추천 후보 조회 (+ 득표수)
-      description: status가 voting 이상일 때 유효. 아직이면 202(진행 중).
+      summary: 추천 후보 조회 (+ 정렬·득표수)
+      description: |
+        status가 voting 이상일 때 유효. 아직이면 202.
+        표시용 name/rating 등은 최종 후보만 라이브 조회 후 서버가 합쳐 반환.
+        구글 데이터 포함 시 "Powered by Google" 출처 표기 동반.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [review_count, rating, random] }
+          description: 미지정 시 세션 sort_mode 사용.
       responses:
         '200':
           description: 후보 목록
@@ -379,12 +87,94 @@ paths:
                   recommendations:
                     type: array
                     items: { $ref: '#/components/schemas/Recommendation' }
-                  relaxed: { type: boolean, description: 완화 포함 여부(배너용) }
+                  relaxed: { type: boolean }
+                  attribution: { type: string, example: Powered by Google }
         '202':
           description: 아직 집계 전
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { code: NOT_READY, message: 아직 집계 전입니다 }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '404':
+          description: 세션 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /sessions/{id}/sort:
+    patch:
+      tags: [추천]
+      summary: 후보 정렬 모드 변경 (세션 공유)
+      description: 개인별 아님. voting 단계에서 허용. 후보·집계는 불변(표시 순서만).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortMode]
+              properties:
+                sortMode: { type: string, enum: [review_count, rating, random] }
+      responses:
+        '200':
+          description: 변경됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { sortMode: { type: string } }
+        '400':
+          description: 잘못된 sortMode
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /places:
+    post:
+      tags: [등록]
+      summary: 점주/시민 식당 등록 (MVP 스텁)
+      description: first-party 저장. 검증·심사 로직은 추후.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, stationId, name, lat, lng]
+              properties:
+                source: { type: string, enum: [owner, community] }
+                stationId: { type: string }
+                name: { type: string }
+                lat: { type: number }
+                lng: { type: number }
+                category: { type: string, nullable: true }
+                priceLevel: { type: integer, nullable: true }
+                openDate: { type: string, format: date, nullable: true }
+      responses:
+        '201':
+          description: 등록됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { placeId: { type: string, format: uuid } }
+        '400':
+          description: 필수값 누락
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      tags: [등록]
+      summary: 역의 등록 식당 목록
+      parameters:
+        - { name: stationId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Place' }
