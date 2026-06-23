@@ -68,10 +68,16 @@ export async function recommend(
   constraints: AggregatedConstraints,
   station: Station,
 ): Promise<PipelineResult> {
-  const [googleCands, registered] = await Promise.all([
+  // 부분 실패 허용: 구글 다운이어도 등록 식당만으로 degrade(전체 실패 방지).
+  const [gRes, rRes] = await Promise.allSettled([
     discoverAndFetch(station),
     fetchRegisteredCandidates(station),
   ]);
+  if (gRes.status === 'rejected')
+    console.error('구글 Nearby 실패 — 등록 식당만으로 진행:', gRes.reason);
+  if (rRes.status === 'rejected') console.error('등록 식당 조회 실패:', rRes.reason);
+  const googleCands = gRes.status === 'fulfilled' ? gRes.value : [];
+  const registered = rRes.status === 'fulfilled' ? rRes.value : [];
 
   let result = runPipeline([...googleCands, ...registered], constraints);
 

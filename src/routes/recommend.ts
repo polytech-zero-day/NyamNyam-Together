@@ -2,6 +2,7 @@
 // GET  /sessions/:id/recommendations — 통합 카드(거리·지도·1위 포함) + Powered by Google
 // PATCH /sessions/:id/sort           — 정렬 모드 변경 (세션 공유, voting에서 허용)
 
+import { randomInt } from 'crypto';
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { requireParticipant, AuthRequest } from '../middleware/auth';
@@ -67,12 +68,30 @@ router.get(
       return;
     }
 
-    // 역 좌표 (거리 계산용) — 표시 시점 라이브 거리 산출에 사용
-    const { data: stationRow } = await supabase
-      .from('station_places')
-      .select('station_lat, station_lng')
-      .eq('station_id', session.station_id)
-      .single();
+    // 독립 쿼리 병렬화: 역 좌표 / 후보+place / stage2 득표 (서로 의존 없음 → 왕복 단축)
+    const [stationRow, recsRes, stage2Votes] = await Promise.all([
+      supabase
+        .from('station_places')
+        .select('station_lat, station_lng')
+        .eq('station_id', session.station_id)
+        .single()
+        .then(({ data }) => data),
+      supabase
+        .from('recommendations')
+        .select(
+          'id, place_id, place_type, rank, relaxed, review_count_at_agg, rating_at_agg, ' +
+            'places(source, google_place_id, name, category, price_level, lat, lng)',
+        )
+        .eq('session_id', sessionId)
+        .order('rank', { ascending: true }),
+      supabase
+        .from('votes')
+        .select('recommendation_id')
+        .eq('session_id', sessionId)
+        .eq('stage', 2)
+        .then(({ data }) => data),
+    ]);
+
     const station: Station | null = stationRow
       ? {
           id: session.station_id,
@@ -81,23 +100,13 @@ router.get(
         }
       : null;
 
-    // 후보 + place 참조 (구글 콘텐츠는 미저장 → place_id/source만)
-    const { data: recs, error } = await supabase
-      .from('recommendations')
-      .select(
-        'id, place_id, place_type, rank, relaxed, review_count_at_agg, rating_at_agg, ' +
-          'places(source, google_place_id, name, category, price_level, lat, lng)',
-      )
-      .eq('session_id', sessionId)
-      .order('rank', { ascending: true });
-
-    if (error) {
-      console.error('recommendations 조회 실패:', error);
+    if (recsRes.error) {
+      console.error('recommendations 조회 실패:', recsRes.error);
       res.status(500).json({ code: 'DB_ERROR', message: '추천을 불러오지 못했습니다' });
       return;
     }
 
-    const rows = (recs ?? []) as unknown as RecRow[];
+    const rows = (recsRes.data ?? []) as unknown as RecRow[];
 
     // 정렬: ?sort= 우선, 없으면 세션 sort_mode (표시 순서만, 후보·집계 불변)
     const queryMode = req.query.sort as SortMode | undefined;
@@ -122,12 +131,7 @@ router.get(
       .filter((id): id is string => typeof id === 'string');
     const details = await placeDetails(googleIds);
 
-    // stage2 투표 수 (★ 집계는 B 소유 — 우리는 표시만 연결)
-    const { data: stage2Votes } = await supabase
-      .from('votes')
-      .select('recommendation_id')
-      .eq('session_id', sessionId)
-      .eq('stage', 2);
+    // stage2 투표 수 (★ 집계는 B 소유 — 우리는 표시만 연결). 위 병렬 쿼리 결과 사용.
     const voteCounts: Record<string, number> = {};
     for (const v of stage2Votes ?? []) {
       if (v.recommendation_id)
@@ -210,10 +214,10 @@ router.patch('/:id/sort', requireParticipant, async (req: AuthRequest, res: Resp
     return;
   }
 
-  // random 최초 선택 시 시드 고정(새로고침해도 순서 유지)
+  // random 최초 선택 시 시드 고정(새로고침해도 순서 유지). crypto 난수로 충돌·예측 방지.
   const update: { sort_mode: SortMode; sort_seed?: number } = { sort_mode: sortMode as SortMode };
   if (sortMode === 'random' && session.sort_seed == null) {
-    update.sort_seed = Math.floor(Date.parse(new Date().toISOString()) % 2_147_483_647) || 1;
+    update.sort_seed = randomInt(1, 2_147_483_647);
   }
 
   const { error } = await supabase.from('sessions').update(update).eq('id', sessionId);

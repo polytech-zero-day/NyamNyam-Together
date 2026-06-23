@@ -14,7 +14,7 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { ensureStation } from '../src/services/googlePlaces';
+import { supabase } from '../src/config/supabase';
 import type { Station } from '../src/domain/types';
 
 // 데이터 파일 없을 때의 내장 데모 목록(주요 5역). station_id = 역명.
@@ -52,14 +52,17 @@ function loadStations(): { stations: Station[]; source: string } {
 async function main(): Promise<void> {
   const { stations, source } = loadStations();
   console.log(`역 좌표 적재(구글 호출 없음) — 소스: ${source}`);
+  // 배치 upsert(청크 500) — 581 순차 왕복 대신 1~2회로 단축
+  const rows = stations.map((s) => ({ station_id: s.id, station_lat: s.lat, station_lng: s.lng }));
+  const CHUNK = 500;
   let ok = 0;
-  for (const s of stations) {
-    try {
-      await ensureStation(s.id, s.lat, s.lng);
-      ok += 1;
-    } catch (e) {
-      console.error(`  ✗ ${s.id}:`, (e as Error).message);
-    }
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const { error } = await supabase
+      .from('station_places')
+      .upsert(chunk, { onConflict: 'station_id', ignoreDuplicates: true });
+    if (error) console.error(`  ✗ 청크 ${i}~${i + chunk.length}:`, error.message);
+    else ok += chunk.length;
   }
   console.log(`✅ ${ok}/${stations.length}역 적재 완료`);
 }
