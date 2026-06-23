@@ -9,6 +9,9 @@ certs/
 # 빌드 아웃풋
 dist/
 
+# 데모 DB 재설정용 통합 SQL (로컬 편의 — 정본은 supabase/migrations/)
+supabase/demo_reset.sql
+
 # 의존성
 node_modules/
 

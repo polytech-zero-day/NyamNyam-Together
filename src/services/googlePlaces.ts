@@ -138,12 +138,14 @@ async function nearbySearch(station: Station, radiusM: number): Promise<GooglePl
  * (이전 kakao.ensureStationExists 대체 — 우리 station_places 소유)
  */
 export async function ensureStation(stationId: string, lat: number, lng: number): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('station_places')
     .upsert(
       { station_id: stationId, station_lat: lat, station_lng: lng },
       { onConflict: 'station_id', ignoreDuplicates: true },
     );
+  // 조용히 넘어가면 후속 FK(예: sessions/places.station_id)가 모호한 에러로 터진다 → 원인을 즉시 표면화.
+  if (error) throw error;
 }
 
 /**
