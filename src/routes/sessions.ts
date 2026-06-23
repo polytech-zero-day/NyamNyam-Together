@@ -24,15 +24,29 @@ router.post('/', requireToss, async (req: AuthRequest, res: Response) => {
       deadline?: string;
     };
 
-  if (!stationId || stationLat == null || stationLng == null || !title) {
-    res.status(400).json({
-      code: 'BAD_REQUEST',
-      message: 'stationId, stationLat, stationLng, title이 필요합니다',
-    });
+  if (!stationId || !title) {
+    res.status(400).json({ code: 'BAD_REQUEST', message: 'stationId, title이 필요합니다' });
     return;
   }
 
-  await ensureStation(stationId, stationLat, stationLng);
+  // 역 좌표 해결: 좌표를 직접 주면 등록(back-compat), 안 주면 미리 적재된 station_places에서 조회.
+  // (역 좌표는 정적 데이터 — 구글 등 외부 API 불필요. seed-stations로 주요 역 적재)
+  if (stationLat != null && stationLng != null) {
+    await ensureStation(stationId, stationLat, stationLng);
+  } else {
+    const { data: st } = await supabase
+      .from('station_places')
+      .select('station_id')
+      .eq('station_id', stationId)
+      .maybeSingle();
+    if (!st) {
+      res.status(400).json({
+        code: 'UNKNOWN_STATION',
+        message: '등록되지 않은 역입니다. 주요 역에서 선택해주세요',
+      });
+      return;
+    }
+  }
 
   const { data, error } = await supabase
     .from('sessions')
@@ -49,7 +63,8 @@ router.post('/', requireToss, async (req: AuthRequest, res: Response) => {
     .single();
 
   if (error || !data) {
-    res.status(500).json({ code: 'DB_ERROR', message: error?.message });
+    console.error('세션 생성 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '세션 생성에 실패했습니다' });
     return;
   }
 

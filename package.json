@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
+    "seed:stations": "ts-node --transpile-only scripts/seed-stations.ts",
     "seed": "ts-node --transpile-only scripts/seed-places.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
