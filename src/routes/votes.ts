@@ -151,7 +151,8 @@ router.post('/:id/votes/stage2', requireAuth, async (req: AuthRequest, res: Resp
     session_id: sessionId,
     user_key: userKey,
     stage: 2,
-    restaurant_id: restaurantId,
+    // 스키마(A) 컬럼명 동기화: restaurant_id → recommendation_id. 투표 로직 불변(B 소유).
+    recommendation_id: restaurantId,
   });
 
   if (error?.code === '23505') {

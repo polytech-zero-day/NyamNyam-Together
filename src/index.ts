@@ -12,6 +12,7 @@ import sessionsRouter from './routes/sessions';
 import participantsRouter from './routes/participants';
 import votesRouter from './routes/votes';
 import recommendRouter from './routes/recommend';
+import placesRouter from './routes/places';
 
 const app = express();
 const PORT = process.env.PORT ?? 3000;
@@ -43,7 +44,8 @@ app.use('/auth', authRouter);
 app.use('/sessions', sessionsRouter); // POST /, GET /:id, POST /:id/close, GET /:id/progress
 app.use('/sessions', participantsRouter); // POST /:id/join
 app.use('/sessions', votesRouter); // POST /:id/votes/stage1, stage2
-app.use('/sessions', recommendRouter); // GET /:id/recommendations
+app.use('/sessions', recommendRouter); // GET /:id/recommendations, PATCH /:id/sort (우리 소유)
+app.use('/places', placesRouter); // POST /, GET /?stationId= (식당 등록, 우리 소유)
 
 // 공통 에러 핸들러
 

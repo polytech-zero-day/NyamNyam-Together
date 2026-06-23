@@ -5,7 +5,8 @@ import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { aggregate, checkDeadlineAndAggregate } from '../services/aggregation';
-import { ensureStationExists } from '../services/kakao';
+// 우리(A) station_places 헬퍼 위치 이동(kakao → googlePlaces)에 따른 import 동기화. 세션 로직 불변(B 소유).
+import { ensureStation } from '../services/googlePlaces';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     return;
   }
 
-  await ensureStationExists(stationId, stationLat, stationLng);
+  await ensureStation(stationId, stationLat, stationLng);
 
   const { data, error } = await supabase
     .from('sessions')
