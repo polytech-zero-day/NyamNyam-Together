@@ -72,7 +72,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     .single();
 
   if (error || !data) {
-    res.status(500).json({ code: 'DB_ERROR', message: error?.message });
+    console.error('place 등록 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '등록에 실패했습니다' });
     return;
   }
   res.status(201).json({ placeId: data.id });
@@ -92,7 +93,8 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
     .in('source', ['owner', 'community']);
 
   if (error) {
-    res.status(500).json({ code: 'DB_ERROR', message: error.message });
+    console.error('places 목록 조회 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '목록을 불러오지 못했습니다' });
     return;
   }
   res.json({ places: data ?? [] });

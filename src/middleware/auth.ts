@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { supabase } from '../config/supabase';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET must be set');
@@ -43,6 +44,33 @@ export function requireToss(req: AuthRequest, res: Response, next: NextFunction)
       return;
     }
     next();
+  });
+}
+
+// 세션 멤버십 인가 (IDOR 방지): 요청자(userKey)가 :id 세션의 참여자인지 확인.
+// service_role이 RLS를 우회하므로 세션 단위 접근 통제는 서버가 책임진다.
+export function requireParticipant(req: AuthRequest, res: Response, next: NextFunction): void {
+  requireAuth(req, res, () => {
+    const sessionId = req.params.id;
+    void supabase
+      .from('participants')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('user_key', req.userKey!)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          res.status(500).json({ code: 'INTERNAL_ERROR', message: '처리 중 오류가 발생했습니다' });
+          return;
+        }
+        if (!data) {
+          res
+            .status(403)
+            .json({ code: 'NOT_PARTICIPANT', message: '세션 참여자만 접근할 수 있습니다' });
+          return;
+        }
+        next();
+      });
   });
 }
 

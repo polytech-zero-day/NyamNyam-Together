@@ -4,7 +4,7 @@
 
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireParticipant, AuthRequest } from '../middleware/auth';
 import { checkDeadlineAndAggregate } from '../services/aggregation';
 import { placeDetails } from '../services/googlePlaces';
 import { applySortMode, SortMode } from '../domain/sort';
@@ -37,7 +37,7 @@ interface RecRow {
   } | null;
 }
 
-router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/:id/recommendations', requireParticipant, async (req: AuthRequest, res: Response) => {
   const sessionId = req.params.id;
 
   await checkDeadlineAndAggregate(sessionId);
@@ -84,7 +84,8 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
     .order('rank', { ascending: true });
 
   if (error) {
-    res.status(500).json({ code: 'DB_ERROR', message: error.message });
+    console.error('recommendations 조회 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '추천을 불러오지 못했습니다' });
     return;
   }
 
@@ -169,7 +170,7 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
 });
 
 // PATCH /sessions/:id/sort — 정렬 모드 변경 (세션 공유, 개인별 아님)
-router.patch('/:id/sort', requireAuth, async (req: AuthRequest, res: Response) => {
+router.patch('/:id/sort', requireParticipant, async (req: AuthRequest, res: Response) => {
   const sessionId = req.params.id;
   const { sortMode } = req.body as { sortMode?: string };
 
@@ -206,7 +207,8 @@ router.patch('/:id/sort', requireAuth, async (req: AuthRequest, res: Response) =
 
   const { error } = await supabase.from('sessions').update(update).eq('id', sessionId);
   if (error) {
-    res.status(500).json({ code: 'DB_ERROR', message: error.message });
+    console.error('sort 변경 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '정렬 변경에 실패했습니다' });
     return;
   }
 

@@ -231,10 +231,23 @@ export interface PlaceDisplay {
   lng: number | null;
 }
 
+// 표시용 라이브 캐시: 투표 화면 폴링마다 Place Details(과금)를 반복 호출하지 않도록 짧은 TTL.
+// ⚠️ 영구/오프라인 저장 아님 — 활성 세션 동안의 메모리 내 일시 사용(ToS "라이브 후 세션 내 사용"). 60초.
+const DETAILS_TTL_MS = 60_000;
+const detailsCache = new Map<string, { exp: number; val: PlaceDisplay }>();
+
 export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string, PlaceDisplay>> {
   const out = new Map<string, PlaceDisplay>();
+  const now = Date.now();
+  const misses: string[] = [];
+  for (const id of googlePlaceIds) {
+    const hit = detailsCache.get(id);
+    if (hit && hit.exp > now) out.set(id, hit.val);
+    else misses.push(id);
+  }
+
   await Promise.all(
-    googlePlaceIds.map(async (id) => {
+    misses.map(async (id) => {
       try {
         const res = await axios.get(`${PLACES_BASE}/places/${id}`, {
           headers: {
@@ -244,7 +257,7 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
           timeout: GOOGLE_TIMEOUT_MS,
         });
         const p = res.data as GooglePlace;
-        out.set(id, {
+        const val: PlaceDisplay = {
           ref: id,
           name: p.displayName?.text ?? null,
           types: p.types ?? [],
@@ -256,7 +269,9 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
           mapUrl: p.googleMapsUri ?? null,
           lat: p.location?.latitude ?? null,
           lng: p.location?.longitude ?? null,
-        });
+        };
+        out.set(id, val);
+        detailsCache.set(id, { exp: now + DETAILS_TTL_MS, val });
       } catch {
         // 개별 실패는 무시(표시 데이터 없으면 스냅샷 폴백). 집계는 멈추지 않는다.
       }
