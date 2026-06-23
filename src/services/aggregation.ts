@@ -1,77 +1,30 @@
-// ⚠️⚠️ B 소유 영역 임시 브리지 ⚠️⚠️ (CLAUDE.md §0 핸드오프)
+// ⚠️⚠️ B 소유 영역 임시 브리지(shim) ⚠️⚠️ (CLAUDE.md §0 핸드오프)
 // 상태전환(collecting→aggregating→voting)·마감 트리거·votes 원본 집계는 B 소유다.
-// B 브랜치가 아직 없어 데모 동작을 위해 임시로 둔다. **B 병합 시 이 파일은 B 정본으로 교체**하고,
-// 우리 연결점은 services/recommend.ts의 recommend(sessionId, AggregatedConstraints, station)뿐이다.
+// B 브랜치가 아직 없어 데모 동작을 위해 상태전환 shim만 둔다.
+// **B 병합 시 이 파일은 B 정본으로 교체**하고, 우리 연결점은 recommend() 호출뿐이다.
 //
-// 우리(C) 소유는 recommend() 안에만 있다. 이 파일의 votes→제약 집계는 B가 가져갈 placeholder.
+// ⚠️ TEMP: votes 원본 집계(예산 종합·다수결·표수)는 제거됨(B 소유). 여기서는 B가 제공할
+//    AggregatedConstraints 대신 **중립 placeholder**로 recommend()를 호출한다.
+//    → 실제 그룹 제약(술/예산/카테고리)이 반영되지 않으므로, 그 사실을 런타임 WARN으로 노출한다.
 
 import { supabase } from '../config/supabase';
 import { recommend } from './recommend';
-import type { AggregatedConstraints, MoodPref, Station } from '../domain/types';
-import type { DrinkValue, MoodValue } from '../types/database.types';
+import type { AggregatedConstraints, Station } from '../domain/types';
 
-interface Stage1Vote {
-  drink: DrinkValue;
-  budget_min: number | null;
-  budget_max: number;
-  categories: string[];
-  mood: MoodValue | null;
-}
-
-// ── TEMP(B 소유): votes stage1 원본 집계 → AggregatedConstraints ───────────────
-// B가 산출할 입력 계약(domain-rules.md §0)을 데모용으로 임시 재현한다. 병합 시 제거.
-function buildConstraints(votes: Stage1Vote[]): AggregatedConstraints {
-  const drink = { drinker: 0, ok: 0, uncomfortable: 0 };
-  for (const v of votes) drink[v.drink] += 1;
-
-  const budgetMaxes = votes.map((v) => v.budget_max).sort((a, b) => a - b);
-  const budgetMins = votes
-    .map((v) => v.budget_min)
-    .filter((x): x is number => typeof x === 'number')
-    .sort((a, b) => a - b);
-  // 상한: P25 완충(0개 위험 완화), 하한: 최솟값(소프트)
-  const budgetMax = budgetMaxes.length
-    ? budgetMaxes[Math.floor(budgetMaxes.length * 0.25)]
-    : Infinity;
-  const budgetMin = budgetMins.length ? budgetMins[0] : 0;
-
-  const catCounts = new Map<string, number>();
-  for (const v of votes) {
-    for (const c of v.categories) {
-      if (c.trim()) catCounts.set(c, (catCounts.get(c) ?? 0) + 1);
-    }
-  }
-  const categories = [...catCounts.entries()].map(([name, count]) => ({ name, votes: count }));
-
-  const moods = votes.map((v) => v.mood).filter((m): m is MoodValue => m === 'quiet' || m === 'any');
-  let moodDominant: MoodPref | null = null;
-  if (moods.length > 0) {
-    const quietRatio = moods.filter((m) => m === 'quiet').length / moods.length;
-    moodDominant = quietRatio > 0.5 ? 'quiet' : 'any';
-  }
-
-  return { drink, budgetMin, budgetMax, categories, moodDominant };
-}
-
-async function getStage1Votes(sessionId: string): Promise<Stage1Vote[]> {
-  const { data, error } = await supabase
-    .from('votes')
-    .select('drink, budget_min, budget_max, categories, mood')
-    .eq('session_id', sessionId)
-    .eq('stage', 1);
-  if (error) throw error;
-  return (data ?? []).map((row) => ({
-    drink: (row.drink as DrinkValue) ?? 'ok',
-    budget_min: row.budget_min,
-    budget_max: (row.budget_max as number) ?? 0,
-    categories: Array.isArray(row.categories) ? (row.categories as string[]) : [],
-    mood: row.mood as MoodValue | null,
-  }));
-}
+// ── TEMP(B 소유): B 집계 미연동 시 사용할 중립 placeholder 제약 ──────────────
+// 술 분포 0,0,0 → compatible+general 허용 / budgetMax=∞ → 예산 필터 사실상 무효 /
+// categories 없음 → 카테고리 가점 없음. B가 실제 AggregatedConstraints를 넘기면 이 경로는 사라진다.
+const NEUTRAL_CONSTRAINTS: AggregatedConstraints = {
+  drink: { drinker: 0, ok: 0, uncomfortable: 0 },
+  budgetMin: 0,
+  budgetMax: Number.POSITIVE_INFINITY,
+  categories: [],
+  moodDominant: null,
+};
 // ── /TEMP(B 소유) ─────────────────────────────────────────────────────────────
 
 /**
- * 집계 실행: collecting → aggregating → voting (B 소유 상태머신, 임시).
+ * 집계 실행: collecting → aggregating → voting (B 소유 상태머신, 임시 shim).
  * 우리 연결점은 recommend() 호출 한 곳뿐.
  */
 export async function aggregate(sessionId: string): Promise<void> {
@@ -102,11 +55,14 @@ export async function aggregate(sessionId: string): Promise<void> {
       lng: Number(stationMeta.station_lng),
     };
 
-    const votes = await getStage1Votes(sessionId);
-    const constraints = buildConstraints(votes);
+    // ⚠️ TEMP: B 집계 미연동 — 중립 제약으로 추천 생성. B 병합 시 실제 AggregatedConstraints로 교체.
+    console.warn(
+      `[TEMP][aggregate] B 집계 미연동 → 중립 placeholder 제약으로 추천 생성 ` +
+        `(session=${sessionId}, station=${stationId}). 그룹 술/예산/카테고리 미반영.`,
+    );
 
-    // ★ 우리(C) 소유 연결점
-    await recommend(sessionId, constraints, station);
+    // ★ 우리(C) 소유 연결점 — B가 산출할 AggregatedConstraints 자리에 중립값을 넣는다(임시).
+    await recommend(sessionId, NEUTRAL_CONSTRAINTS, station);
 
     await supabase
       .from('sessions')
@@ -124,7 +80,7 @@ export async function aggregate(sessionId: string): Promise<void> {
   }
 }
 
-/** 마감시간 Lazy 체크: now > deadline 이면 집계 트리거 (B 소유, 임시). */
+/** 마감시간 Lazy 체크: now > deadline 이면 집계 트리거 (B 소유, 임시 shim). */
 export async function checkDeadlineAndAggregate(sessionId: string): Promise<void> {
   const { data: session } = await supabase
     .from('sessions')
