@@ -71,17 +71,18 @@ drink 분포로 허용 집합 결정(인원수 기준):
 
 **한글 분류 ↔ google types:**
 
+> 정본 8개 = 프론트/기능정의서와 동일. 매핑은 범용성 넓게(없는 type은 매칭만 안 될 뿐 무해).
+
 | 한글 분류 | google types (매칭/includedPrimaryTypes) |
 |---|---|
 | 한식 | korean_restaurant |
-| 고기·구이 | barbecue_restaurant, korean_restaurant |
 | 일식 | japanese_restaurant, sushi_restaurant, ramen_restaurant |
+| 양식 | italian_restaurant, american_restaurant, french_restaurant, steak_house, pizza_restaurant, hamburger_restaurant, spanish_restaurant |
 | 중식 | chinese_restaurant |
-| 양식·파스타 | italian_restaurant, american_restaurant, french_restaurant, steak_house |
-| 분식 | korean_restaurant (전용 type 없음 → fallback) |
-| 치킨 | chicken_restaurant, fast_food_restaurant |
-| 술집 | bar, pub, wine_bar |
-| 카페·디저트 | cafe, coffee_shop, bakery, dessert_restaurant |
+| 분식 | korean_restaurant (전용 type 없음 → 한식 fallback) |
+| 아시안 | asian_restaurant, thai_restaurant, vietnamese_restaurant, indian_restaurant, indonesian_restaurant, middle_eastern_restaurant |
+| 고기·구이 | barbecue_restaurant, korean_restaurant |
+| 카페·브런치 | cafe, coffee_shop, bakery, brunch_restaurant, breakfast_restaurant, dessert_restaurant |
 
 ## 4. 분위기 (mood.ts) — 현재 미사용
 

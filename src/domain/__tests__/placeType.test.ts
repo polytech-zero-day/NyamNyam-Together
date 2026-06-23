@@ -55,15 +55,13 @@ describe('등록 식당 place_type 계산 (category 경유, general 폴백)', ()
   const fromCategory = (korean: string): PlaceType =>
     classifyPlaceType(googleTypesForCategory(korean));
 
-  it('술집 → drink_required', () => {
-    expect(fromCategory('술집')).toBe('drink_required');
-  });
-  it('고기·구이 → compatible', () => {
+  it('고기·구이 → compatible (barbecue 매핑)', () => {
     expect(fromCategory('고기·구이')).toBe('compatible');
   });
-  it('한식/카페·디저트 → general', () => {
-    expect(fromCategory('한식')).toBe('general');
-    expect(fromCategory('카페·디저트')).toBe('general');
+  it('한식/일식/양식/중식/아시안/카페·브런치 → general', () => {
+    for (const c of ['한식', '일식', '양식', '중식', '아시안', '카페·브런치']) {
+      expect(fromCategory(c)).toBe('general');
+    }
   });
   it('미지/빈 category → general 폴백', () => {
     expect(fromCategory('죽')).toBe('general');
