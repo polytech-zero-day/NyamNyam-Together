@@ -1,5 +1,6 @@
 // 이 파일은 Supabase CLI로 자동 생성합니다.
 // 재생성: supabase gen types typescript --local > src/types/database.types.ts
+// 기준 스키마: supabase/migrations/0001_init.sql (places/station_places/recommendations).
 
 export type Json =
   | string
@@ -10,14 +11,40 @@ export type Json =
   | Json[];
 
 export type SessionStatus = 'collecting' | 'aggregating' | 'voting' | 'closed';
+export type SortMode = 'review_count' | 'rating' | 'random';
 export type PlaceType = 'drink_required' | 'compatible' | 'general';
+export type PlaceSource = 'google' | 'owner' | 'community';
+export type PlaceStatus = 'active' | 'closed';
 export type DrinkValue = 'drinker' | 'ok' | 'uncomfortable';
 export type MoodValue = 'quiet' | 'any';
-export type ConfidenceValue = 'high' | 'medium';
 
 export interface Database {
   public: {
     Tables: {
+      station_places: {
+        Row: {
+          station_id: string;
+          station_lat: number;
+          station_lng: number;
+          places_discovered_at: string | null;
+          place_count: number;
+        };
+        Insert: {
+          station_id: string;
+          station_lat: number;
+          station_lng: number;
+          places_discovered_at?: string | null;
+          place_count?: number;
+        };
+        Update: {
+          station_id?: string;
+          station_lat?: number;
+          station_lng?: number;
+          places_discovered_at?: string | null;
+          place_count?: number;
+        };
+        Relationships: [];
+      };
       sessions: {
         Row: {
           id: string;
@@ -26,8 +53,12 @@ export interface Database {
           purpose: string | null;
           min_participants: number;
           station_id: string;
+          station_lat: number | null;
+          station_lng: number | null;
           deadline: string | null;
           status: SessionStatus;
+          sort_mode: SortMode;
+          sort_seed: number | null;
           created_at: string;
         };
         Insert: {
@@ -37,8 +68,12 @@ export interface Database {
           purpose?: string | null;
           min_participants?: number;
           station_id: string;
+          station_lat?: number | null;
+          station_lng?: number | null;
           deadline?: string | null;
           status?: SessionStatus;
+          sort_mode?: SortMode;
+          sort_seed?: number | null;
           created_at?: string;
         };
         Update: {
@@ -48,8 +83,12 @@ export interface Database {
           purpose?: string | null;
           min_participants?: number;
           station_id?: string;
+          station_lat?: number | null;
+          station_lng?: number | null;
           deadline?: string | null;
           status?: SessionStatus;
+          sort_mode?: SortMode;
+          sort_seed?: number | null;
           created_at?: string;
         };
         Relationships: [];
@@ -75,6 +114,116 @@ export interface Database {
         };
         Relationships: [];
       };
+      places: {
+        Row: {
+          id: string;
+          source: PlaceSource;
+          google_place_id: string | null;
+          station_id: string;
+          place_type: PlaceType | null;
+          name: string | null;
+          lat: number | null;
+          lng: number | null;
+          category: string | null;
+          price_level: number | null;
+          open_date: string | null;
+          status: PlaceStatus | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          source: PlaceSource;
+          google_place_id?: string | null;
+          station_id: string;
+          place_type?: PlaceType | null;
+          name?: string | null;
+          lat?: number | null;
+          lng?: number | null;
+          category?: string | null;
+          price_level?: number | null;
+          open_date?: string | null;
+          status?: PlaceStatus | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          source?: PlaceSource;
+          google_place_id?: string | null;
+          station_id?: string;
+          place_type?: PlaceType | null;
+          name?: string | null;
+          lat?: number | null;
+          lng?: number | null;
+          category?: string | null;
+          price_level?: number | null;
+          open_date?: string | null;
+          status?: PlaceStatus | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'places_station_id_fkey';
+            columns: ['station_id'];
+            isOneToOne: false;
+            referencedRelation: 'station_places';
+            referencedColumns: ['station_id'];
+          },
+        ];
+      };
+      recommendations: {
+        Row: {
+          id: string;
+          session_id: string;
+          place_id: string;
+          place_type: PlaceType | null;
+          rank: number;
+          relaxed: boolean;
+          ai_reason: string | null;
+          review_count_at_agg: number | null;
+          rating_at_agg: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          place_id: string;
+          place_type?: PlaceType | null;
+          rank: number;
+          relaxed?: boolean;
+          ai_reason?: string | null;
+          review_count_at_agg?: number | null;
+          rating_at_agg?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          place_id?: string;
+          place_type?: PlaceType | null;
+          rank?: number;
+          relaxed?: boolean;
+          ai_reason?: string | null;
+          review_count_at_agg?: number | null;
+          rating_at_agg?: number | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'recommendations_session_id_fkey';
+            columns: ['session_id'];
+            isOneToOne: false;
+            referencedRelation: 'sessions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'recommendations_place_id_fkey';
+            columns: ['place_id'];
+            isOneToOne: false;
+            referencedRelation: 'places';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       votes: {
         Row: {
           id: string;
@@ -86,7 +235,7 @@ export interface Database {
           budget_max: number | null;
           categories: Json | null;
           mood: MoodValue | null;
-          restaurant_id: string | null;
+          recommendation_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -99,7 +248,7 @@ export interface Database {
           budget_max?: number | null;
           categories?: Json | null;
           mood?: MoodValue | null;
-          restaurant_id?: string | null;
+          recommendation_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -112,195 +261,25 @@ export interface Database {
           budget_max?: number | null;
           categories?: Json | null;
           mood?: MoodValue | null;
-          restaurant_id?: string | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-      restaurants: {
-        Row: {
-          id: string;
-          kakao_id: string;
-          station_id: string;
-          name: string;
-          category_large: string;
-          category_mid: string | null;
-          category_small: string | null;
-          category_name: string;
-          address: string | null;
-          road_address: string | null;
-          phone: string | null;
-          lat: number;
-          lng: number;
-          distance_m: number | null;
-          kakao_url: string | null;
-          price_level: number | null;
-          avg_price_min: number | null;
-          avg_price_max: number | null;
-          mood: string[] | null;
-          source: string | null;
-          source_rating: number | null;
-          source_url: string | null;
-          crawled_at: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          kakao_id: string;
-          station_id: string;
-          name: string;
-          category_large: string;
-          category_mid?: string | null;
-          category_small?: string | null;
-          category_name: string;
-          address?: string | null;
-          road_address?: string | null;
-          phone?: string | null;
-          lat: number;
-          lng: number;
-          distance_m?: number | null;
-          kakao_url?: string | null;
-          price_level?: number | null;
-          avg_price_min?: number | null;
-          avg_price_max?: number | null;
-          mood?: string[] | null;
-          source?: string | null;
-          source_rating?: number | null;
-          source_url?: string | null;
-          crawled_at?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          kakao_id?: string;
-          station_id?: string;
-          name?: string;
-          category_large?: string;
-          category_mid?: string | null;
-          category_small?: string | null;
-          category_name?: string;
-          address?: string | null;
-          road_address?: string | null;
-          phone?: string | null;
-          lat?: number;
-          lng?: number;
-          distance_m?: number | null;
-          kakao_url?: string | null;
-          price_level?: number | null;
-          avg_price_min?: number | null;
-          avg_price_max?: number | null;
-          mood?: string[] | null;
-          source?: string | null;
-          source_rating?: number | null;
-          source_url?: string | null;
-          crawled_at?: string | null;
+          recommendation_id?: string | null;
           created_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: 'restaurants_station_id_fkey';
-            columns: ['station_id'];
-            isOneToOne: false;
-            referencedRelation: 'station_restaurants';
-            referencedColumns: ['station_id'];
-          },
-        ];
-      };
-      recommendations: {
-        Row: {
-          id: string;
-          session_id: string;
-          restaurant_id: string;
-          name: string;
-          category_name: string | null;
-          place_type: PlaceType;
-          lat: number;
-          lng: number;
-          distance: number | null;
-          place_url: string | null;
-          relaxed: boolean;
-          rank: number;
-          ai_reason: string | null;
-          confidence: ConfidenceValue | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          session_id: string;
-          restaurant_id: string;
-          name: string;
-          category_name?: string | null;
-          place_type: PlaceType;
-          lat: number;
-          lng: number;
-          distance?: number | null;
-          place_url?: string | null;
-          relaxed?: boolean;
-          rank: number;
-          ai_reason?: string | null;
-          confidence?: ConfidenceValue | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          session_id?: string;
-          restaurant_id?: string;
-          name?: string;
-          category_name?: string | null;
-          place_type?: PlaceType;
-          lat?: number;
-          lng?: number;
-          distance?: number | null;
-          place_url?: string | null;
-          relaxed?: boolean;
-          rank?: number;
-          ai_reason?: string | null;
-          confidence?: ConfidenceValue | null;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'recommendations_session_id_fkey';
+            foreignKeyName: 'votes_session_id_fkey';
             columns: ['session_id'];
             isOneToOne: false;
             referencedRelation: 'sessions';
             referencedColumns: ['id'];
           },
           {
-            foreignKeyName: 'recommendations_restaurant_id_fkey';
-            columns: ['restaurant_id'];
+            foreignKeyName: 'votes_recommendation_id_fkey';
+            columns: ['recommendation_id'];
             isOneToOne: false;
-            referencedRelation: 'restaurants';
+            referencedRelation: 'recommendations';
             referencedColumns: ['id'];
           },
         ];
-      };
-      station_restaurants: {
-        Row: {
-          station_id: string;
-          station_lat: number;
-          station_lng: number;
-          kakao_fetched_at: string | null;
-          web_enriched_at: string | null;
-          restaurant_count: number | null;
-        };
-        Insert: {
-          station_id: string;
-          station_lat: number;
-          station_lng: number;
-          kakao_fetched_at?: string | null;
-          web_enriched_at?: string | null;
-          restaurant_count?: number | null;
-        };
-        Update: {
-          station_id?: string;
-          station_lat?: number;
-          station_lng?: number;
-          kakao_fetched_at?: string | null;
-          web_enriched_at?: string | null;
-          restaurant_count?: number | null;
-        };
-        Relationships: [];
       };
     };
     Views: Record<string, never>;
