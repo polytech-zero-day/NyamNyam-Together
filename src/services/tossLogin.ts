@@ -1,11 +1,14 @@
 // 토스 로그인 연동 (toss-login.md)
 // mTLS 필수. 서버에서만 사용. userKey만 저장(개인정보 최소 수집).
+// ⚠️ 응답 봉투: { resultType: 'SUCCESS'|'FAIL', success: {...}|null, error: {errorCode, reason} }
+//    (라이브 mTLS 검증으로 확인 — 직접 res.data.accessToken 아님)
 
 import axios from 'axios';
 import https from 'https';
 import fs from 'fs';
 
 const TOSS_BASE = 'https://apps-in-toss-api.toss.im';
+const TOSS_TIMEOUT_MS = 10_000;
 
 // mTLS 에이전트: 최초 호출 시 생성 (인증서 파일 lazy 로드)
 let _httpsAgent: https.Agent | null = null;
@@ -28,7 +31,23 @@ function tossClient() {
   return axios.create({
     baseURL: TOSS_BASE,
     httpsAgent: getMtlsAgent(),
+    timeout: TOSS_TIMEOUT_MS,
   });
+}
+
+// 토스 공통 응답 봉투. resultType=FAIL이면 error.reason으로 throw, SUCCESS면 success 페이로드 반환.
+interface TossEnvelope<T> {
+  resultType: 'SUCCESS' | 'FAIL';
+  success: T | null;
+  error: { errorType?: number; errorCode?: string; reason?: string } | null;
+}
+
+function unwrap<T>(data: TossEnvelope<T>): T {
+  if (!data || data.resultType !== 'SUCCESS' || data.success == null) {
+    const e = data?.error;
+    throw new Error(`토스 API 실패: ${e?.errorCode ?? '?'} ${e?.reason ?? '알 수 없는 오류'}`);
+  }
+  return data.success;
 }
 
 interface TokenResponse {
@@ -45,10 +64,8 @@ export async function exchangeAuthorizationCode(
     authorizationCode,
     referrer,
   });
-  return {
-    accessToken: res.data.accessToken,
-    refreshToken: res.data.refreshToken,
-  };
+  const s = unwrap<TokenResponse>(res.data);
+  return { accessToken: s.accessToken, refreshToken: s.refreshToken };
 }
 
 // AccessToken → userKey 조회 (앱 단위 고유 식별자)
@@ -57,7 +74,7 @@ export async function getUserKey(accessToken: string): Promise<number> {
   const res = await tossClient().get('/api-partner/v1/apps-in-toss/user/oauth2/login-me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  return res.data.userKey as number;
+  return unwrap<{ userKey: number }>(res.data).userKey;
 }
 
 // AccessToken 만료 시 재발급
@@ -65,8 +82,6 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   const res = await tossClient().post('/api-partner/v1/apps-in-toss/user/oauth2/refresh-token', {
     refreshToken,
   });
-  return {
-    accessToken: res.data.accessToken,
-    refreshToken: res.data.refreshToken,
-  };
+  const s = unwrap<TokenResponse>(res.data);
+  return { accessToken: s.accessToken, refreshToken: s.refreshToken };
 }
