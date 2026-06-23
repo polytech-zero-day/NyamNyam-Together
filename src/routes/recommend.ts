@@ -47,7 +47,9 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
     return;
   }
   if (['collecting', 'aggregating'].includes(session.status)) {
-    res.status(202).json({ code: 'NOT_READY', message: '아직 집계 전입니다', status: session.status });
+    res
+      .status(202)
+      .json({ code: 'NOT_READY', message: '아직 집계 전입니다', status: session.status });
     return;
   }
 
@@ -99,7 +101,8 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
     .eq('stage', 2);
   const voteCounts: Record<string, number> = {};
   for (const v of stage2Votes ?? []) {
-    if (v.recommendation_id) voteCounts[v.recommendation_id] = (voteCounts[v.recommendation_id] ?? 0) + 1;
+    if (v.recommendation_id)
+      voteCounts[v.recommendation_id] = (voteCounts[v.recommendation_id] ?? 0) + 1;
   }
 
   const result = sorted.map((r) => {
@@ -152,7 +155,9 @@ router.patch('/:id/sort', requireAuth, async (req: AuthRequest, res: Response) =
     return;
   }
   if (session.status !== 'voting') {
-    res.status(409).json({ code: 'INVALID_STATUS', message: '투표 단계에서만 정렬을 바꿀 수 있습니다' });
+    res
+      .status(409)
+      .json({ code: 'INVALID_STATUS', message: '투표 단계에서만 정렬을 바꿀 수 있습니다' });
     return;
   }
 

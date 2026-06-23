@@ -30,11 +30,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     };
 
   if (!source || !SOURCES.includes(source as PlaceSource)) {
-    res.status(400).json({ code: 'BAD_REQUEST', message: 'source는 owner/community 중 하나여야 합니다' });
+    res
+      .status(400)
+      .json({ code: 'BAD_REQUEST', message: 'source는 owner/community 중 하나여야 합니다' });
     return;
   }
   if (!stationId || !name || lat == null || lng == null) {
-    res.status(400).json({ code: 'BAD_REQUEST', message: 'stationId, name, lat, lng가 필요합니다' });
+    res
+      .status(400)
+      .json({ code: 'BAD_REQUEST', message: 'stationId, name, lat, lng가 필요합니다' });
     return;
   }
   if (priceLevel != null && (priceLevel < 1 || priceLevel > 4)) {

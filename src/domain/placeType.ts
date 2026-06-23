@@ -15,7 +15,9 @@ const COMPATIBLE_TYPES = new Set<string>(['barbecue_restaurant', 'brewery', 'bar
  * primaryType 우선, 그다음 types 배열. 매칭 없으면 general.
  */
 export function classifyPlaceType(types: string[], primaryType?: string | null): PlaceType {
-  const all = [primaryType, ...types].filter((t): t is string => typeof t === 'string' && t.length > 0);
+  const all = [primaryType, ...types].filter(
+    (t): t is string => typeof t === 'string' && t.length > 0,
+  );
   if (all.some((t) => DRINK_REQUIRED_TYPES.has(t))) return 'drink_required';
   if (all.some((t) => COMPATIBLE_TYPES.has(t))) return 'compatible';
   return 'general';

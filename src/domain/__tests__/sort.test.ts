@@ -1,6 +1,10 @@
 import { applySortMode, SortSignals, MIN_RATING_SAMPLE } from '../sort';
 
-const sig = (rating: number | null, reviewCount: number | null, registered = false): SortSignals => ({
+const sig = (
+  rating: number | null,
+  reviewCount: number | null,
+  registered = false,
+): SortSignals => ({
   rating,
   reviewCount,
   registered,

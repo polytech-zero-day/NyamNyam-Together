@@ -37,7 +37,10 @@ export function getEligibleCategories(
 // eligibleCategories 비어있으면 0점(전 후보 동점). 필터 아님 — 정렬 가중치.
 const CATEGORY_MATCH_POINTS = 10;
 
-export function scoreByCategoryMatch(candidateTypes: string[], eligibleCategories: string[]): number {
+export function scoreByCategoryMatch(
+  candidateTypes: string[],
+  eligibleCategories: string[],
+): number {
   if (eligibleCategories.length === 0) return 0;
   const typeSet = new Set(candidateTypes);
   let score = 0;

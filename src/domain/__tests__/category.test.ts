@@ -61,9 +61,9 @@ describe('scoreByCategoryMatch — types 겹침 점수', () => {
   });
 
   it('여러 카테고리 매칭 → 합산', () => {
-    expect(scoreByCategoryMatch(['korean_restaurant', 'chinese_restaurant'], ['한식', '중식'])).toBe(
-      20,
-    );
+    expect(
+      scoreByCategoryMatch(['korean_restaurant', 'chinese_restaurant'], ['한식', '중식']),
+    ).toBe(20);
   });
 
   it('매칭 없으면 0점', () => {

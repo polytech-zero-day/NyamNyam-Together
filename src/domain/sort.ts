@@ -33,7 +33,7 @@ function compareRating(a: SortSignals, b: SortSignals): number {
 // 결정적 시드 셔플 (xorshift 기반). 같은 시드 → 같은 순서 (새로고침해도 고정).
 function seededShuffle<T>(items: T[], seed: number): T[] {
   const arr = [...items];
-  let state = (seed | 0) || 1;
+  let state = seed | 0 || 1;
   const next = (): number => {
     state ^= state << 13;
     state ^= state >>> 17;

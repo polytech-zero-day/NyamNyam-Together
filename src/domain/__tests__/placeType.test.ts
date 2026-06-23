@@ -83,8 +83,12 @@ describe('placeTypeOf (등록 override 우선)', () => {
 
 describe('allowedPlaceTypes (분포)', () => {
   it('uncomfortable ≥ 1 → general만', () => {
-    expect(allowedPlaceTypes({ drinker: 2, ok: 1, uncomfortable: 1 })).toEqual(new Set(['general']));
-    expect(allowedPlaceTypes({ drinker: 0, ok: 0, uncomfortable: 1 })).toEqual(new Set(['general']));
+    expect(allowedPlaceTypes({ drinker: 2, ok: 1, uncomfortable: 1 })).toEqual(
+      new Set(['general']),
+    );
+    expect(allowedPlaceTypes({ drinker: 0, ok: 0, uncomfortable: 1 })).toEqual(
+      new Set(['general']),
+    );
   });
 
   it('drinker만 → 전부', () => {
@@ -120,9 +124,9 @@ describe('filterByPlaceType', () => {
 
   it('uncomfortable → general만', () => {
     const result = filterByPlaceType(candidates, { drinker: 1, ok: 0, uncomfortable: 1 });
-    expect(result.every((c) => (['korean_restaurant', 'cafe'] as string[]).includes(c.types[0]))).toBe(
-      true,
-    );
+    expect(
+      result.every((c) => (['korean_restaurant', 'cafe'] as string[]).includes(c.types[0])),
+    ).toBe(true);
     expect(result).toHaveLength(2);
   });
 

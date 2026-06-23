@@ -31,7 +31,9 @@ const constraints = (overrides: Partial<AggregatedConstraints> = {}): Aggregated
 
 describe('runPipeline — 빈 입력', () => {
   it('candidates 없음 → 빈 결과', () => {
-    expect(runPipeline([], constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf)).toEqual({
+    expect(
+      runPipeline([], constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf),
+    ).toEqual({
       recommended: [],
       relaxedConstraints: [],
     });
@@ -56,13 +58,21 @@ describe('runPipeline — 정상 케이스', () => {
 
   it('카테고리 2표 매칭 후보가 앞', () => {
     const candidates = [cand('1', ['chinese_restaurant']), cand('2', ['korean_restaurant'])];
-    const result = runPipeline(candidates, constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf);
+    const result = runPipeline(
+      candidates,
+      constraints({ categories: [{ name: '한식', votes: 2 }] }),
+      asOf,
+    );
     expect(result.recommended[0].ref).toBe('2');
   });
 
   it('placeType 스냅샷 채워짐', () => {
     const candidates = [cand('1', ['cafe']), cand('2', ['barbecue_restaurant'])];
-    const result = runPipeline(candidates, constraints({ drink: { drinker: 2, ok: 0, uncomfortable: 0 } }), asOf);
+    const result = runPipeline(
+      candidates,
+      constraints({ drink: { drinker: 2, ok: 0, uncomfortable: 0 } }),
+      asOf,
+    );
     expect(result.recommended.find((c) => c.ref === '1')?.placeType).toBe('general');
     expect(result.recommended.find((c) => c.ref === '2')?.placeType).toBe('compatible');
   });
@@ -168,7 +178,11 @@ describe('runPipeline — longevity (등록 식당)', () => {
         userRatingCount: 5,
       }),
     ];
-    const result = runPipeline(candidates, constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf);
+    const result = runPipeline(
+      candidates,
+      constraints({ categories: [{ name: '한식', votes: 2 }] }),
+      asOf,
+    );
     // 둘 다 한식 매칭(10점), owner는 longevity +3 → owner 앞
     expect(result.recommended[0].ref).toBe('o');
   });
