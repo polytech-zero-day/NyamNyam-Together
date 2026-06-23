@@ -18,7 +18,6 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.105.0",
     "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.6.0",
     "cors": "^2.8.6",

@@ -1,5 +1,5 @@
 // 추천 조회·정렬 (우리 소유, api-spec.md)
-// GET  /sessions/:id/recommendations — 후보 3~4곳 + ai_reason + voteCount (+ Powered by Google)
+// GET  /sessions/:id/recommendations — 후보 3~4곳 + voteCount (+ Powered by Google)
 // PATCH /sessions/:id/sort           — 정렬 모드 변경 (세션 공유, voting에서 허용)
 
 import { Router, Response } from 'express';
@@ -20,7 +20,6 @@ interface RecRow {
   place_type: string | null;
   rank: number;
   relaxed: boolean;
-  ai_reason: string | null;
   review_count_at_agg: number | null;
   rating_at_agg: number | null;
   places: {
@@ -56,7 +55,7 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
   const { data: recs, error } = await supabase
     .from('recommendations')
     .select(
-      'id, place_id, place_type, rank, relaxed, ai_reason, review_count_at_agg, rating_at_agg, ' +
+      'id, place_id, place_type, rank, relaxed, review_count_at_agg, rating_at_agg, ' +
         'places(source, google_place_id, name, category, price_level)',
     )
     .eq('session_id', sessionId)
@@ -111,7 +110,6 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
       rank: r.rank,
       placeType: r.place_type,
       relaxed: r.relaxed,
-      aiReason: r.ai_reason,
       source: r.places?.source ?? null,
       // 구글: 라이브 표시값(미저장), 폴백은 집계 스냅샷. 등록: 저장값.
       name: live?.name ?? r.places?.name ?? null,

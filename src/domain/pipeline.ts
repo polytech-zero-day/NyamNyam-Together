@@ -1,6 +1,6 @@
 // 2단 파이프라인 (domain-rules.md 전체)
 // 입력 = "이미 집계된 제약"(AggregatedConstraints) + 후보 풀(구글 라이브 ∪ 등록 식당).
-// 선정은 코드가 끝낸다(순수 함수). LLM은 ai_reason만(파이프라인 밖).
+// 선정은 코드가 끝낸다(순수 함수). AI/LLM 개입 없음.
 
 import type { AggregatedConstraints, Candidate, RankedCandidate } from './types';
 import { placeTypeOf, filterByPlaceType } from './placeType';
