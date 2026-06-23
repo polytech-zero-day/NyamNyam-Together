@@ -8,8 +8,17 @@
 ## 0. 스택 전제 (신스택 — han·yang 공통)
 - 데이터 소스: **구글 Places API(New)** (카카오·Edge Function 폐기)
 - 런타임: **Node + TypeScript** (RPC 비즈니스 로직 아님)
-- 사용자 식별: **토스 userKey(bigint)** (Supabase `auth.uid()` 아님)
+- 사용자 식별: **인증 모델 B** (아래 0-1) — Supabase `auth.uid()` 아님
 - ToS: `places`엔 google `place_id` + 우리 가공 `place_type`만 영구 저장. 콘텐츠는 라이브 후 폐기.
+
+### 0-1. 인증 모델 B (host=토스 / 참여자=익명)
+> 제품 결정: 전원 로그인은 마찰이 크다 → **그룹 생성·종료(host)만 토스 식별**, **참여자는 로그인 없이 링크로 입장**.
+- **host**: 토스 `appLogin()` → `POST /auth/login` → JWT(`kind:'toss'`, userKey=양수). `requireToss` 가드.
+- **참여자**: `POST /auth/anon` → JWT(`kind:'anon'`, 음수 랜덤 id). `requireAuth`(익명 허용).
+- `participants.user_key`/`votes.user_key`(bigint)에 **양수=토스 / 음수=익명**을 함께 저장 → 세션 내
+  1인1표 `unique(session_id,user_key,stage)` 그대로. **스키마 변경 불필요.**
+- 가드: 생성·종료=`requireToss`, 입장·투표·조회=`requireAuth`. 익명은 세션 링크(uuid)로만 진입.
+- ⚠️ 기능정의서 "앱인토스 식별 활용"은 **host 기준**으로 해석(참여자 익명) — 문서 문구 보정 필요.
 
 ## 1. 세션 상태 (정본)
 ```

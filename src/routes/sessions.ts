@@ -3,15 +3,16 @@
 
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+// requireToss: 그룹 생성·종료는 토스 host만(인증 모델 B). 참여·조회는 requireAuth(익명 허용).
+import { requireAuth, requireToss, AuthRequest } from '../middleware/auth';
 import { aggregate, checkDeadlineAndAggregate } from '../services/aggregation';
 // 우리(A) station_places 헬퍼 위치 이동(kakao → googlePlaces)에 따른 import 동기화. 세션 로직 불변(B 소유).
 import { ensureStation } from '../services/googlePlaces';
 
 const router = Router();
 
-// POST /sessions — 모임 생성
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
+// POST /sessions — 모임 생성 (host=토스 필수)
+router.post('/', requireToss, async (req: AuthRequest, res: Response) => {
   const { stationId, stationLat, stationLng, title, minParticipants, purpose, deadline } =
     req.body as {
       stationId?: string;
@@ -80,8 +81,8 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   res.json({ ...session, participantCount: count ?? 0 });
 });
 
-// POST /sessions/:id/close — 생성자 수동 종료 → 집계 트리거
-router.post('/:id/close', requireAuth, async (req: AuthRequest, res: Response) => {
+// POST /sessions/:id/close — 생성자 수동 종료 → 집계 트리거 (host=토스 필수)
+router.post('/:id/close', requireToss, async (req: AuthRequest, res: Response) => {
   const { data: session, error } = await supabase
     .from('sessions')
     .select('host_user_key, status')

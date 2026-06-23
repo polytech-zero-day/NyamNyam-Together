@@ -3,9 +3,16 @@
 
 import { Router, Request, Response } from 'express';
 import { exchangeAuthorizationCode, getUserKey } from '../services/tossLogin';
-import { signToken } from '../middleware/auth';
+import { signToken, signAnonToken } from '../middleware/auth';
 
 const router = Router();
+
+// POST /auth/anon — 익명 참가자 토큰 발급 (로그인 없이 링크로 입장하는 참여자용).
+// host(그룹 생성·종료)는 /auth/login(토스) 필요. (integration-contract.md 인증 모델 B)
+router.post('/anon', (_req: Request, res: Response) => {
+  const { token } = signAnonToken();
+  res.json({ token });
+});
 
 router.post('/login', async (req: Request, res: Response) => {
   const { authorizationCode, referrer } = req.body as {
