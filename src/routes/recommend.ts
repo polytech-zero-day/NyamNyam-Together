@@ -1,5 +1,5 @@
-// 추천 조회·정렬 (우리 소유, api-spec.md)
-// GET  /sessions/:id/recommendations — 후보 3~4곳 + voteCount (+ Powered by Google)
+// 추천 조회·정렬 (우리 소유, api-spec.md / integration-contract.md 통합 카드)
+// GET  /sessions/:id/recommendations — 통합 카드(거리·지도·1위 포함) + Powered by Google
 // PATCH /sessions/:id/sort           — 정렬 모드 변경 (세션 공유, voting에서 허용)
 
 import { Router, Response } from 'express';
@@ -8,6 +8,10 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { checkDeadlineAndAggregate } from '../services/aggregation';
 import { placeDetails } from '../services/googlePlaces';
 import { applySortMode, SortMode } from '../domain/sort';
+import { distanceFromStation } from '../domain/geo';
+import type { Station } from '../domain/types';
+
+const ATTRIBUTION = 'Powered by Google';
 
 const router = Router();
 
@@ -28,6 +32,8 @@ interface RecRow {
     name: string | null;
     category: string | null;
     price_level: number | null;
+    lat: number | null;
+    lng: number | null;
   } | null;
 }
 
@@ -38,7 +44,7 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
 
   const { data: session } = await supabase
     .from('sessions')
-    .select('status, sort_mode, sort_seed')
+    .select('status, sort_mode, sort_seed, station_id')
     .eq('id', sessionId)
     .single();
 
@@ -53,12 +59,26 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
     return;
   }
 
+  // 역 좌표 (거리 계산용) — 표시 시점 라이브 거리 산출에 사용
+  const { data: stationRow } = await supabase
+    .from('station_places')
+    .select('station_lat, station_lng')
+    .eq('station_id', session.station_id)
+    .single();
+  const station: Station | null = stationRow
+    ? {
+        id: session.station_id,
+        lat: Number(stationRow.station_lat),
+        lng: Number(stationRow.station_lng),
+      }
+    : null;
+
   // 후보 + place 참조 (구글 콘텐츠는 미저장 → place_id/source만)
   const { data: recs, error } = await supabase
     .from('recommendations')
     .select(
       'id, place_id, place_type, rank, relaxed, review_count_at_agg, rating_at_agg, ' +
-        'places(source, google_place_id, name, category, price_level)',
+        'places(source, google_place_id, name, category, price_level, lat, lng)',
     )
     .eq('session_id', sessionId)
     .order('rank', { ascending: true });
@@ -108,8 +128,13 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
   const result = sorted.map((r) => {
     const isGoogle = r.places?.source === 'google';
     const live = r.places?.google_place_id ? details.get(r.places.google_place_id) : undefined;
+    // 거리(표시 시점 라이브): 구글=Details 좌표, 등록=places 저장 좌표. station 없으면 null.
+    const lat = isGoogle ? (live?.lat ?? null) : (r.places?.lat ?? null);
+    const lng = isGoogle ? (live?.lng ?? null) : (r.places?.lng ?? null);
+    const distanceM = station ? distanceFromStation({ lat, lng }, station) : null;
     return {
-      id: r.id,
+      recId: r.id, // stage2 투표용 식별자 (recommendations.id)
+      placeId: r.places?.google_place_id ?? r.place_id, // 구글=place_id, 등록=내부 id
       rank: r.rank,
       placeType: r.place_type,
       relaxed: r.relaxed,
@@ -117,17 +142,29 @@ router.get('/:id/recommendations', requireAuth, async (req: AuthRequest, res: Re
       // 구글: 라이브 표시값(미저장), 폴백은 집계 스냅샷. 등록: 저장값.
       name: live?.name ?? r.places?.name ?? null,
       rating: live?.rating ?? r.rating_at_agg,
-      userRatingCount: live?.userRatingCount ?? r.review_count_at_agg,
+      reviewCount: live?.userRatingCount ?? r.review_count_at_agg,
       priceLevel: live?.priceLevel ?? r.places?.price_level ?? null,
+      distanceM,
+      mapUrl: live?.mapUrl ?? null,
       voteCount: voteCounts[r.id] ?? 0,
       poweredByGoogle: isGoogle, // 프론트 "Powered by Google" 출처 표기
     };
   });
 
+  // 현재 1위(표시용 — 최종 집계·동점은 B 소유). 득표 0이면 leader 없음.
+  const leader = result.reduce<{ recId: string; voteCount: number } | null>((best, c) => {
+    if (c.voteCount <= 0) return best;
+    return !best || c.voteCount > best.voteCount
+      ? { recId: c.recId, voteCount: c.voteCount }
+      : best;
+  }, null);
+
   res.json({
     sortMode: mode,
-    recommendations: result,
     relaxed: result.some((r) => r.relaxed),
+    attribution: ATTRIBUTION,
+    leader,
+    recommendations: result,
   });
 });
 

@@ -28,22 +28,24 @@ components:
       required: [code, message]
     Recommendation:
       type: object
-      description: 후보 스냅샷 + 표시 시점 라이브 합성 필드(name/rating 등).
+      description: 통합 후보 카드(스냅샷 + 표시 시점 라이브 합성). integration-contract.md 기준.
       properties:
-        id: { type: string, format: uuid }
-        session_id: { type: string, format: uuid }
-        place_id: { type: string, format: uuid, description: places.id 참조 }
-        source: { type: string, enum: [google, owner, community] }
-        place_type: { type: string, enum: [drink_required, compatible, general] }
+        recId:
+          { type: string, format: uuid, description: recommendations.id — stage2 투표용 식별자 }
+        placeId: { type: string, description: 구글=google_place_id, 등록=내부 places.id }
         rank: { type: integer }
+        placeType: { type: string, enum: [drink_required, compatible, general], nullable: true }
         relaxed: { type: boolean, description: 조건 완화 포함 여부 }
-        voteCount: { type: integer, description: stage2 득표 수(B 집계) }
+        source: { type: string, enum: [google, owner, community], nullable: true }
+        voteCount: { type: integer, description: stage2 득표 수(표시용 — 집계 정본은 B) }
+        poweredByGoogle: { type: boolean, description: true면 "Powered by Google" 표기 필수 }
         # 아래는 표시 시점 라이브 조회 합성값 (DB 저장 안 함)
         name: { type: string, nullable: true, description: 라이브(google) 또는 등록값 }
         rating: { type: number, nullable: true, description: 라이브 google rating }
-        userRatingCount: { type: integer, nullable: true, description: 라이브 리뷰 수 }
+        reviewCount: { type: integer, nullable: true, description: 라이브 userRatingCount }
         priceLevel: { type: integer, nullable: true }
-        distance_m: { type: integer, nullable: true }
+        distanceM: { type: integer, nullable: true, description: 역 중심 기준 거리(m) }
+        mapUrl: { type: string, nullable: true, description: 구글 지도 링크(표시용) }
     Place:
       type: object
       properties:
@@ -84,11 +86,19 @@ paths:
               schema:
                 type: object
                 properties:
+                  sortMode: { type: string, enum: [review_count, rating, random] }
+                  relaxed: { type: boolean }
+                  attribution: { type: string, example: Powered by Google }
+                  leader:
+                    type: object
+                    nullable: true
+                    description: 현재 최다 득표(표시용, 득표 0이면 null). 최종 확정은 B.
+                    properties:
+                      recId: { type: string, format: uuid }
+                      voteCount: { type: integer }
                   recommendations:
                     type: array
                     items: { $ref: '#/components/schemas/Recommendation' }
-                  relaxed: { type: boolean }
-                  attribution: { type: string, example: Powered by Google }
         '202':
           description: 아직 집계 전
           content:

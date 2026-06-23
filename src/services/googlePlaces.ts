@@ -44,7 +44,11 @@ const DETAILS_FIELD_MASK = [
   'rating',
   'userRatingCount',
   'priceLevel',
+  'googleMapsUri', // 지도 링크(표시용, 미저장). Pro 필드 — Details는 이미 Enterprise 티어라 추가비용 0
 ].join(',');
+
+// 구글 호출 타임아웃(ms) — 응답 지연이 aggregate/요청 핸들러를 무한 대기시키지 않도록.
+const GOOGLE_TIMEOUT_MS = 5_000;
 
 interface GooglePlace {
   id: string;
@@ -57,6 +61,7 @@ interface GooglePlace {
   rating?: number;
   userRatingCount?: number;
   priceLevel?: string; // PRICE_LEVEL_* enum
+  googleMapsUri?: string;
   movedPlaceId?: string;
 }
 
@@ -118,6 +123,7 @@ async function nearbySearch(station: Station, radiusM: number): Promise<GooglePl
         'X-Goog-FieldMask': NEARBY_FIELD_MASK,
         'Content-Type': 'application/json',
       },
+      timeout: GOOGLE_TIMEOUT_MS,
     },
   );
   return (res.data.places ?? []) as GooglePlace[];
@@ -210,6 +216,9 @@ export interface PlaceDisplay {
   userRatingCount: number | null;
   priceLevel: number | null;
   address: string | null;
+  mapUrl: string | null; // 지도 링크(표시용)
+  lat: number | null; // 거리 계산용(표시 시점 라이브)
+  lng: number | null;
 }
 
 export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string, PlaceDisplay>> {
@@ -222,6 +231,7 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
             'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
             'X-Goog-FieldMask': DETAILS_FIELD_MASK,
           },
+          timeout: GOOGLE_TIMEOUT_MS,
         });
         const p = res.data as GooglePlace;
         out.set(id, {
@@ -233,6 +243,9 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
           userRatingCount: p.userRatingCount ?? null,
           priceLevel: mapPriceLevel(p.priceLevel),
           address: p.formattedAddress ?? null,
+          mapUrl: p.googleMapsUri ?? null,
+          lat: p.location?.latitude ?? null,
+          lng: p.location?.longitude ?? null,
         });
       } catch {
         // 개별 실패는 무시(표시 데이터 없으면 스냅샷 폴백). 집계는 멈추지 않는다.
