@@ -6,6 +6,7 @@
 import axios from 'axios';
 import { supabase } from '../config/supabase';
 import { classifyPlaceType } from '../domain/placeType';
+import { haversineMeters } from '../domain/geo';
 import type { Candidate, Station } from '../domain/types';
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
@@ -76,18 +77,7 @@ function mapPriceLevel(level?: string): number | null {
   }
 }
 
-// 하버사인 거리(m) — Nearby는 distance를 주지 않으므로 역 좌표 기준 계산
-function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6_371_000;
-  const toRad = (d: number): number => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-
+// 거리(m)는 domain/geo의 haversineMeters로 일원화 (Nearby는 distance를 안 주므로 역 좌표 기준 계산)
 function toCandidate(p: GooglePlace, station: Station, placeId: string | null): Candidate {
   const loc = p.location;
   return {
@@ -100,7 +90,7 @@ function toCandidate(p: GooglePlace, station: Station, placeId: string | null): 
     rating: p.rating ?? null,
     userRatingCount: p.userRatingCount ?? null,
     name: p.displayName?.text ?? null, // 라이브 표시용(미저장)
-    distanceM: loc ? haversineM(station.lat, station.lng, loc.latitude, loc.longitude) : null,
+    distanceM: loc ? haversineMeters(station.lat, station.lng, loc.latitude, loc.longitude) : null,
     placeTypeOverride: null,
     categoryKorean: null,
     openDate: null, // 구글 openingDate는 미래 개업 전용 → longevity 미적용

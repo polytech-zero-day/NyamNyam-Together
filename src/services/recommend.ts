@@ -6,16 +6,17 @@
 import { supabase } from '../config/supabase';
 import { discoverAndFetch } from './googlePlaces';
 import { runPipeline, PipelineResult } from '../domain/pipeline';
+import { distanceFromStation } from '../domain/geo';
 import type { AggregatedConstraints, Candidate, Station, RankedCandidate } from '../domain/types';
 
 const RELAXED_RADIUS_M = 1_000; // 0개 완화 시 반경 확대 1회 재호출 (TODO: 데이터 보고 확정)
 
 // 등록(owner/community) 식당을 후보로 적재
-async function fetchRegisteredCandidates(stationId: string): Promise<Candidate[]> {
+async function fetchRegisteredCandidates(station: Station): Promise<Candidate[]> {
   const { data, error } = await supabase
     .from('places')
     .select('id, source, place_type, name, lat, lng, category, price_level, open_date, status')
-    .eq('station_id', stationId)
+    .eq('station_id', station.id)
     .in('source', ['owner', 'community']);
   if (error) throw error;
 
@@ -31,7 +32,8 @@ async function fetchRegisteredCandidates(stationId: string): Promise<Candidate[]
       rating: null, // 등록 식당은 구글 평점 없음
       userRatingCount: null,
       name: r.name,
-      distanceM: null, // 등록 식당 거리(추후 station 좌표 기반 보강 가능)
+      // 역 좌표 기준 거리 계산(yang geo 흡수). 좌표 없으면 null.
+      distanceM: distanceFromStation({ lat: r.lat, lng: r.lng }, station),
       placeTypeOverride: (r.place_type as Candidate['placeTypeOverride']) ?? null,
       categoryKorean: r.category,
       openDate: r.open_date,
@@ -68,7 +70,7 @@ export async function recommend(
 ): Promise<PipelineResult> {
   const [googleCands, registered] = await Promise.all([
     discoverAndFetch(station),
-    fetchRegisteredCandidates(station.id),
+    fetchRegisteredCandidates(station),
   ]);
 
   let result = runPipeline([...googleCands, ...registered], constraints);
