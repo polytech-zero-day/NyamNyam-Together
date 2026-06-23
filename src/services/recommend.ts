@@ -76,8 +76,9 @@ export async function recommend(
   let result = runPipeline([...googleCands, ...registered], constraints);
 
   // 0개 완화 마지막 단계: 반경 확대 1회 재호출 (술 제약 유지, relaxed 플래그)
+  // recordDiscovery=false — 넓힌 반경 결과로 기본 반경 디스커버리 캐시(TTL·place_count) 오염 방지.
   if (result.recommended.length === 0 && result.relaxedConstraints.includes('radius')) {
-    const wider = await discoverAndFetch(station, RELAXED_RADIUS_M);
+    const wider = await discoverAndFetch(station, RELAXED_RADIUS_M, false);
     result = runPipeline([...wider, ...registered], constraints);
     result.recommended = result.recommended.map((c) => ({ ...c, relaxed: true }));
   }

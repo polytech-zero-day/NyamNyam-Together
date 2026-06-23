@@ -150,11 +150,14 @@ export async function ensureStation(stationId: string, lat: number, lng: number)
  * - 콘텐츠는 저장하지 않고 라이브 응답을 그대로 파이프라인 입력으로 반환.
  * - upsert 후 각 후보의 내부 places.id(placeId)를 채워 반환.
  *
+ * @param recordDiscovery true면 station_places 디스커버리 메타(시각·개수) 갱신. 0개 완화 시 반경을
+ *        확대해 재호출할 때는 false로 — 기본 반경 캐시(TTL·place_count)를 넓은 반경 값으로 오염시키지 않도록.
  * @returns 라이브 google 후보 배열 (placeId 매핑 포함)
  */
 export async function discoverAndFetch(
   station: Station,
   radiusM: number = DEFAULT_RADIUS_M,
+  recordDiscovery = true,
 ): Promise<Candidate[]> {
   const places = await nearbySearch(station, radiusM);
 
@@ -172,14 +175,21 @@ export async function discoverAndFetch(
       station_id: station.id,
       place_type: classifyPlaceType(p.types ?? [], p.primaryType ?? null),
     }));
-    await supabase.from('places').upsert(rows, { onConflict: 'google_place_id' });
+    // 에러를 삼키면 placeId 매핑 실패→추천 0건이 조용히 작성되므로 표면화(리뷰 P0).
+    const { error: upErr } = await supabase
+      .from('places')
+      .upsert(rows, { onConflict: 'google_place_id' });
+    if (upErr) throw upErr;
   }
 
-  // station_places 디스커버리 메타 갱신
-  await supabase
-    .from('station_places')
-    .update({ places_discovered_at: new Date().toISOString(), place_count: live.length })
-    .eq('station_id', station.id);
+  // station_places 디스커버리 메타 갱신 (완화 재호출 시엔 건너뜀 — 캐시 오염 방지)
+  if (recordDiscovery) {
+    const { error: metaErr } = await supabase
+      .from('station_places')
+      .update({ places_discovered_at: new Date().toISOString(), place_count: live.length })
+      .eq('station_id', station.id);
+    if (metaErr) throw metaErr;
+  }
 
   // 내부 places.id 매핑 조회 (recommendations FK용)
   const ids = live.map((p) => p.id);
