@@ -6,16 +6,20 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { requireAuth, AuthRequest } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimit';
 import { classifyPlaceType } from '../domain/placeType';
 import { googleTypesForCategory } from '../domain/category';
 import type { PlaceSource, PlaceType } from '../types/database.types';
 
 const router = Router();
 
+// 등록(쓰기) 남용 방지 — 사용자당 분당 20회
+const registerLimiter = rateLimit({ windowMs: 60_000, max: 20 });
+
 const SOURCES: PlaceSource[] = ['owner', 'community'];
 const PLACE_TYPES: PlaceType[] = ['drink_required', 'compatible', 'general'];
 
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/', requireAuth, registerLimiter, async (req: AuthRequest, res: Response) => {
   const { source, stationId, name, lat, lng, category, priceLevel, openDate, placeType } =
     req.body as {
       source?: string;
