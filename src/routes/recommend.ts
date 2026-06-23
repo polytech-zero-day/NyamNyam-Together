@@ -154,6 +154,8 @@ router.get(
         reviewCount: live?.userRatingCount ?? r.review_count_at_agg,
         priceLevel: live?.priceLevel ?? r.places?.price_level ?? null,
         distanceM,
+        address: live?.address ?? null, // 구글 라이브(미저장). 등록 식당 주소는 추후 보강
+        phone: live?.phone ?? null, // 식당 전화번호(구글 라이브)
         mapUrl: live?.mapUrl ?? null,
         voteCount: voteCounts[r.id] ?? 0,
         poweredByGoogle: isGoogle, // 프론트 "Powered by Google" 출처 표기

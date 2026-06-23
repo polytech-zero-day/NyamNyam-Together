@@ -64,6 +64,8 @@ components:
         reviewCount: { type: integer, nullable: true, description: 라이브 userRatingCount }
         priceLevel: { type: integer, nullable: true }
         distanceM: { type: integer, nullable: true, description: 역 중심 기준 거리(m) }
+        address: { type: string, nullable: true, description: 라이브 주소(구글, 미저장) }
+        phone: { type: string, nullable: true, description: 식당 전화번호(구글 라이브) }
         mapUrl: { type: string, nullable: true, description: 구글 지도 링크(표시용) }
     Place:
       type: object
@@ -214,8 +216,7 @@ paths:
                 description: sessions 행 + participantCount
                 properties:
                   id: { type: string, format: uuid }
-                  status:
-                    { type: string, enum: [collecting, aggregating, voting, closed] }
+                  status: { type: string, enum: [collecting, aggregating, voting, closed] }
                   title: { type: string }
                   participantCount: { type: integer }
         '404':
@@ -372,8 +373,7 @@ paths:
               type: object
               required: [restaurantId]
               properties:
-                restaurantId:
-                  { type: string, format: uuid, description: recommendations.id }
+                restaurantId: { type: string, format: uuid, description: recommendations.id }
       responses:
         '201':
           description: 투표 완료

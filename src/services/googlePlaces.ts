@@ -45,6 +45,7 @@ const DETAILS_FIELD_MASK = [
   'userRatingCount',
   'priceLevel',
   'googleMapsUri', // 지도 링크(표시용, 미저장). Pro 필드 — Details는 이미 Enterprise 티어라 추가비용 0
+  'nationalPhoneNumber', // 식당 전화번호(최종 식당정보 표시). Enterprise 필드 — Atmosphere 아님, 추가비용 0
 ].join(',');
 
 // 구글 호출 타임아웃(ms) — 응답 지연이 aggregate/요청 핸들러를 무한 대기시키지 않도록.
@@ -62,6 +63,7 @@ interface GooglePlace {
   userRatingCount?: number;
   priceLevel?: string; // PRICE_LEVEL_* enum
   googleMapsUri?: string;
+  nationalPhoneNumber?: string;
   movedPlaceId?: string;
 }
 
@@ -226,6 +228,7 @@ export interface PlaceDisplay {
   userRatingCount: number | null;
   priceLevel: number | null;
   address: string | null;
+  phone: string | null; // 식당 전화번호(표시용)
   mapUrl: string | null; // 지도 링크(표시용)
   lat: number | null; // 거리 계산용(표시 시점 라이브)
   lng: number | null;
@@ -266,6 +269,7 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
           userRatingCount: p.userRatingCount ?? null,
           priceLevel: mapPriceLevel(p.priceLevel),
           address: p.formattedAddress ?? null,
+          phone: p.nationalPhoneNumber ?? null,
           mapUrl: p.googleMapsUri ?? null,
           lat: p.location?.latitude ?? null,
           lng: p.location?.longitude ?? null,
