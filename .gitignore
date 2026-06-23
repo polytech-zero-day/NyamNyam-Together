@@ -15,6 +15,10 @@ supabase/demo_reset.sql
 # 의존성
 node_modules/
 
+# Supabase CLI 로컬 (main init 병합)
+supabase/.temp/
+AGENTS.md
+
 # TypeScript 증분 빌드 캐시
 *.tsbuildinfo
 
