@@ -1,31 +1,35 @@
-// ⚠️⚠️ B 소유 영역 임시 브리지(shim) ⚠️⚠️ (CLAUDE.md §0 핸드오프)
-// 상태전환(collecting→aggregating→voting)·마감 트리거·votes 원본 집계는 B 소유다.
-// B 브랜치가 아직 없어 데모 동작을 위해 상태전환 shim만 둔다.
-// **B 병합 시 이 파일은 B 정본으로 교체**하고, 우리 연결점은 recommend() 호출뿐이다.
-//
-// ⚠️ TEMP: votes 원본 집계(예산 종합·다수결·표수)는 제거됨(B 소유). 여기서는 B가 제공할
-//    AggregatedConstraints 대신 **중립 placeholder**로 recommend()를 호출한다.
-//    → 실제 그룹 제약(술/예산/카테고리)이 반영되지 않으므로, 그 사실을 런타임 WARN으로 노출한다.
+// 상태전환 브리지 + 잠정 집계 (integ/backend-merge 절충안)
+// ⚠️ 상태전환(collecting→aggregating→voting)·마감 트리거·votes 원본 집계는 본래 B 소유다.
+// B 담당 합류 전까지 통합 브랜치가 실제 그룹 제약을 반영하도록 **잠정 절충안**으로 둔다.
+// 집계 로직은 services/voteAggregation.ts(PROVISIONAL)에 분리 — B 합류 시 그 모듈+이 파일을 교체.
+// 우리(C)의 정식 연결점은 recommend(sessionId, AggregatedConstraints, Station) 한 곳뿐.
 
 import { supabase } from '../config/supabase';
 import { recommend } from './recommend';
-import type { AggregatedConstraints, Station } from '../domain/types';
+import { buildConstraintsFromVotes, Stage1Vote } from './voteAggregation';
+import type { Station } from '../domain/types';
+import type { DrinkValue, MoodValue } from '../types/database.types';
 
-// ── TEMP(B 소유): B 집계 미연동 시 사용할 중립 placeholder 제약 ──────────────
-// 술 분포 0,0,0 → compatible+general 허용 / budgetMax=∞ → 예산 필터 사실상 무효 /
-// categories 없음 → 카테고리 가점 없음. B가 실제 AggregatedConstraints를 넘기면 이 경로는 사라진다.
-const NEUTRAL_CONSTRAINTS: AggregatedConstraints = {
-  drink: { drinker: 0, ok: 0, uncomfortable: 0 },
-  budgetMin: 0,
-  budgetMax: Number.POSITIVE_INFINITY,
-  categories: [],
-  moodDominant: null,
-};
-// ── /TEMP(B 소유) ─────────────────────────────────────────────────────────────
+// stage1 votes 조회 (잠정 — B 합류 시 B 집계 RPC/서비스로 대체)
+async function getStage1Votes(sessionId: string): Promise<Stage1Vote[]> {
+  const { data, error } = await supabase
+    .from('votes')
+    .select('drink, budget_min, budget_max, categories, mood')
+    .eq('session_id', sessionId)
+    .eq('stage', 1);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    drink: (row.drink as DrinkValue) ?? 'ok',
+    budget_min: row.budget_min,
+    budget_max: row.budget_max,
+    categories: Array.isArray(row.categories) ? (row.categories as string[]) : [],
+    mood: row.mood as MoodValue | null,
+  }));
+}
 
 /**
- * 집계 실행: collecting → aggregating → voting (B 소유 상태머신, 임시 shim).
- * 우리 연결점은 recommend() 호출 한 곳뿐.
+ * 집계 실행: collecting → aggregating → voting.
+ * (상태머신·집계는 본래 B 소유 — 여기선 잠정. 우리 연결점은 recommend() 호출.)
  */
 export async function aggregate(sessionId: string): Promise<void> {
   const { data: session, error } = await supabase
@@ -55,14 +59,12 @@ export async function aggregate(sessionId: string): Promise<void> {
       lng: Number(stationMeta.station_lng),
     };
 
-    // ⚠️ TEMP: B 집계 미연동 — 중립 제약으로 추천 생성. B 병합 시 실제 AggregatedConstraints로 교체.
-    console.warn(
-      `[TEMP][aggregate] B 집계 미연동 → 중립 placeholder 제약으로 추천 생성 ` +
-        `(session=${sessionId}, station=${stationId}). 그룹 술/예산/카테고리 미반영.`,
-    );
+    // 잠정 절충안: stage1 votes → AggregatedConstraints (B 합류 시 B 집계로 교체)
+    const votes = await getStage1Votes(sessionId);
+    const constraints = buildConstraintsFromVotes(votes);
 
-    // ★ 우리(C) 소유 연결점 — B가 산출할 AggregatedConstraints 자리에 중립값을 넣는다(임시).
-    await recommend(sessionId, NEUTRAL_CONSTRAINTS, station);
+    // ★ 우리(C) 정식 연결점
+    await recommend(sessionId, constraints, station);
 
     await supabase
       .from('sessions')
@@ -80,7 +82,7 @@ export async function aggregate(sessionId: string): Promise<void> {
   }
 }
 
-/** 마감시간 Lazy 체크: now > deadline 이면 집계 트리거 (B 소유, 임시 shim). */
+/** 마감시간 Lazy 체크: now > deadline 이면 집계 트리거 (본래 B 소유, 잠정). */
 export async function checkDeadlineAndAggregate(sessionId: string): Promise<void> {
   const { data: session } = await supabase
     .from('sessions')
