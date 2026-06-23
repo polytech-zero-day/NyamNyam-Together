@@ -1,17 +1,35 @@
 openapi: 3.0.3
 info:
-  title: 냠냠투게더 API — A·C 파트 (추천 서버)
-  version: 0.2.0
+  title: 냠냠투게더 API — 통합 백엔드 (integ/backend-merge)
+  version: 0.3.0
   description: |
-    이 명세는 **우리 소유 엔드포인트(추천 조회·정렬, 식당 등록)** 만 다룬다.
-    인증/세션/참여/투표 엔드포인트는 공통/B파트 소유 → 여기서는 제외.
-    상세는 `docs/api-spec.md`. 인증은 토스 로그인 → 서버 발급 JWT(Bearer).
+    냠냠투게더(앱인토스 미니앱) 백엔드 API.
+
+    **소유 경계 표기** (CLAUDE.md §0 / integration-contract.md):
+    - 🟢 **A·C(우리)**: 추천 조회·정렬, 식당 등록, 스키마·RLS, 구글 Places.
+    - 🟡 **B-브리지(잠정)**: 세션 상태전환·마감·votes 집계는 본래 B 소유.
+      B 담당 합류 전까지 통합 브랜치가 잠정 구현 — 합류 시 교체 대상.
+    - 🔵 **인증**: 토스 로그인 → JWT(host) / 익명 토큰(참여자). 인증 모델 B.
+
+    **인증 모델**: host(그룹 생성·종료)는 토스 로그인 필수, 참여자는 익명 토큰으로
+    링크 입장(로그인 마찰 제거). 두 토큰 모두 `Authorization: Bearer <JWT>`.
+    상세는 `docs/api-spec.md`, `docs/integration-contract.md`.
 servers:
   - url: http://localhost:3000
     description: 로컬 개발
 tags:
+  - name: 시스템
+    description: 헬스체크 등 운영
+  - name: 인증
+    description: 토스 로그인(host) / 익명 토큰(참여자) — 인증 모델 B
+  - name: 세션
+    description: 모임 생성·조회·종료·진행현황 (🟡 상태전환·마감은 B-브리지 잠정)
+  - name: 투표
+    description: stage1 제약 응답 / stage2 식당 선택 (🟡 집계는 B-브리지 잠정)
   - name: 추천
+    description: 추천 후보 조회·정렬 (🟢 A·C 우리 소유)
   - name: 등록
+    description: 점주/시민 식당 등록 (🟢 A·C 우리 소유)
 
 components:
   securitySchemes:
@@ -19,6 +37,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: 토스 host 토큰 또는 익명 참여자 토큰 (POST /auth/login · /auth/anon).
   schemas:
     Error:
       type: object
@@ -49,26 +68,347 @@ components:
     Place:
       type: object
       properties:
-        placeId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
         source: { type: string, enum: [owner, community] }
-        stationId: { type: string }
         name: { type: string }
         lat: { type: number }
         lng: { type: number }
         category: { type: string, nullable: true }
-        priceLevel: { type: integer, nullable: true }
-        openDate: { type: string, format: date, nullable: true }
+        price_level: { type: integer, nullable: true }
+        open_date: { type: string, format: date, nullable: true }
+        place_type: { type: string, enum: [drink_required, compatible, general], nullable: true }
+        status: { type: string, example: active }
 
 security:
   - bearerAuth: []
 
 paths:
+  /health:
+    get:
+      tags: [시스템]
+      summary: 헬스체크 (liveness probe)
+      security: []
+      responses:
+        '200':
+          description: 정상
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { type: string, example: ok } }
+
+  /auth/login:
+    post:
+      tags: [인증]
+      summary: 토스 로그인 → host JWT 발급
+      description: |
+        🔵 토스 인가코드를 교환해 userKey(양수)를 얻고 host용 JWT(1h)를 발급한다.
+        access/refresh 토큰은 서버 메모리에서만 처리, DB 저장 안 함(toss-login.md).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [authorizationCode, referrer]
+              properties:
+                authorizationCode: { type: string }
+                referrer: { type: string }
+      responses:
+        '200':
+          description: 발급됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { token: { type: string, description: host JWT } }
+        '400':
+          description: 필수값 누락
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: 토스 로그인 실패
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: AUTH_FAILED, message: 토스 로그인에 실패했습니다 }
+
+  /auth/anon:
+    post:
+      tags: [인증]
+      summary: 익명 참여자 토큰 발급 (로그인 없이 링크 입장)
+      description: |
+        🔵 음수 랜덤 id를 user_key로 쓰는 익명 JWT(12h)를 발급한다.
+        토스 userKey(양수)와 충돌하지 않아 1인1표 dedup에 그대로 사용 가능.
+        그룹 생성·종료(host 권한)에는 사용 불가 → 토스 로그인 필요.
+      security: []
+      responses:
+        '200':
+          description: 발급됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { token: { type: string, description: 익명 참여자 JWT } }
+
+  /sessions:
+    post:
+      tags: [세션]
+      summary: 모임 생성 (host=토스 필수)
+      description: |
+        🟡 상태전환 트리거는 B-브리지 잠정. 생성자는 자동 참여 처리되고
+        역 좌표(station_places)를 등록한다(🟢 우리 소유).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stationId, stationLat, stationLng, title]
+              properties:
+                stationId: { type: string }
+                stationLat: { type: number }
+                stationLng: { type: number }
+                title: { type: string }
+                minParticipants: { type: integer, default: 2 }
+                purpose: { type: string, nullable: true }
+                deadline: { type: string, format: date-time, nullable: true }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId: { type: string, format: uuid }
+                  inviteLink: { type: string, example: '/sessions/{id}/join' }
+        '400':
+          description: 필수값 누락
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: 토스 로그인 필요(익명 토큰 거부)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: TOSS_REQUIRED, message: 토스 로그인이 필요한 작업입니다 }
+
+  /sessions/{id}:
+    get:
+      tags: [세션]
+      summary: 모임 정보 조회 (마감 Lazy 체크 포함)
+      description: 🟡 조회 시 deadline 경과면 집계를 트리거(B-브리지 잠정).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 세션 정보 + 참여자 수
+          content:
+            application/json:
+              schema:
+                type: object
+                description: sessions 행 + participantCount
+                properties:
+                  id: { type: string, format: uuid }
+                  status:
+                    { type: string, enum: [collecting, aggregating, voting, closed] }
+                  title: { type: string }
+                  participantCount: { type: integer }
+        '404':
+          description: 세션 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /sessions/{id}/close:
+    post:
+      tags: [세션]
+      summary: 모임 수동 종료 → 집계 트리거 (host=토스 필수)
+      description: 🟡 생성자만 가능. collecting 상태에서만. 집계는 B-브리지 잠정.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 집계 시작됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403':
+          description: 생성자 아님 / 토스 로그인 필요
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: 세션 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: collecting 상태 아님
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /sessions/{id}/progress:
+    get:
+      tags: [세션]
+      summary: stage1 응답 현황 (responded/total)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 진행 현황
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  responded: { type: integer }
+                  total: { type: integer }
+
+  /sessions/{id}/join:
+    post:
+      tags: [세션]
+      summary: 모임 참여 (익명 토큰 허용)
+      description: collecting 상태에서만. 중복 참여는 409.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: 참여 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '404':
+          description: 세션 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: 수집 단계 아님 / 이미 참여
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: ALREADY_JOINED, message: 이미 참여한 세션입니다 }
+
+  /sessions/{id}/votes/stage1:
+    post:
+      tags: [투표]
+      summary: stage1 제약 응답 (술·예산·카테고리·분위기)
+      description: |
+        🟡 응답 저장은 통합 브랜치, 집계(votes→AggregatedConstraints)는 B-브리지 잠정.
+        세션 참여자만. collecting 상태에서만. 1인1표(중복은 409).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [drink, budgetMax]
+              properties:
+                drink: { type: string, enum: [drinker, ok, uncomfortable] }
+                budgetMin: { type: integer, nullable: true }
+                budgetMax: { type: integer }
+                categories:
+                  type: array
+                  items: { type: string }
+                  description: '한글 분류명(예: 한식, 고기·구이). 2표 임계는 추천 로직에서 적용.'
+                mood: { type: string, enum: [quiet, any], nullable: true }
+      responses:
+        '201':
+          description: 응답 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '400':
+          description: 필수값 누락 / 잘못된 enum
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: 참여자 아님
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: NOT_PARTICIPANT, message: 세션에 참여한 사용자만 응답할 수 있습니다 }
+        '404':
+          description: 세션 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: 수집 단계 아님 / 이미 응답
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: ALREADY_VOTED, message: 이미 응답한 세션입니다 }
+
+  /sessions/{id}/votes/stage2:
+    post:
+      tags: [투표]
+      summary: stage2 식당 선택 (👍)
+      description: |
+        🟡 투표 저장은 통합 브랜치, 최종 집계·동점은 B 소유.
+        voting 상태에서만. restaurantId는 recommendations.id. 1인1표(중복은 409).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restaurantId]
+              properties:
+                restaurantId:
+                  { type: string, format: uuid, description: recommendations.id }
+      responses:
+        '201':
+          description: 투표 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '400':
+          description: restaurantId 누락
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: 참여자 아님
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: 세션 없음 / 후보 아님
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: 투표 단계 아님 / 이미 투표
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /sessions/{id}/recommendations:
     get:
       tags: [추천]
       summary: 추천 후보 조회 (+ 정렬·득표수)
       description: |
-        status가 voting 이상일 때 유효. 아직이면 202.
+        🟢 status가 voting 이상일 때 유효. 아직이면 202.
         표시용 name/rating 등은 최종 후보만 라이브 조회 후 서버가 합쳐 반환.
         구글 데이터 포함 시 "Powered by Google" 출처 표기 동반.
       parameters:
@@ -115,7 +455,7 @@ paths:
     patch:
       tags: [추천]
       summary: 후보 정렬 모드 변경 (세션 공유)
-      description: 개인별 아님. voting 단계에서 허용. 후보·집계는 불변(표시 순서만).
+      description: 🟢 개인별 아님. voting 단계에서 허용. 후보·집계는 불변(표시 순서만).
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -134,9 +474,21 @@ paths:
             application/json:
               schema:
                 type: object
-                properties: { sortMode: { type: string } }
+                properties:
+                  message: { type: string }
+                  sortMode: { type: string }
         '400':
           description: 잘못된 sortMode
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: 세션 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: voting 단계 아님
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -145,7 +497,7 @@ paths:
     post:
       tags: [등록]
       summary: 점주/시민 식당 등록 (MVP 스텁)
-      description: first-party 저장. 검증·심사 로직은 추후.
+      description: 🟢 first-party 저장. 검증·심사 로직은 추후.
       requestBody:
         required: true
         content:
@@ -160,8 +512,10 @@ paths:
                 lat: { type: number }
                 lng: { type: number }
                 category: { type: string, nullable: true }
-                priceLevel: { type: integer, nullable: true }
+                priceLevel: { type: integer, minimum: 1, maximum: 4, nullable: true }
                 openDate: { type: string, format: date, nullable: true }
+                placeType:
+                  { type: string, enum: [drink_required, compatible, general], nullable: true }
       responses:
         '201':
           description: 등록됨
@@ -171,7 +525,7 @@ paths:
                 type: object
                 properties: { placeId: { type: string, format: uuid } }
         '400':
-          description: 필수값 누락
+          description: 필수값 누락 / 잘못된 값
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -186,5 +540,13 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/Place' }
+                type: object
+                properties:
+                  places:
+                    type: array
+                    items: { $ref: '#/components/schemas/Place' }
+        '400':
+          description: stationId 누락
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
