@@ -178,7 +178,6 @@ export interface Database {
           place_type: PlaceType | null;
           rank: number;
           relaxed: boolean;
-          ai_reason: string | null;
           review_count_at_agg: number | null;
           rating_at_agg: number | null;
           created_at: string;
@@ -190,7 +189,6 @@ export interface Database {
           place_type?: PlaceType | null;
           rank: number;
           relaxed?: boolean;
-          ai_reason?: string | null;
           review_count_at_agg?: number | null;
           rating_at_agg?: number | null;
           created_at?: string;
@@ -202,7 +200,6 @@ export interface Database {
           place_type?: PlaceType | null;
           rank?: number;
           relaxed?: boolean;
-          ai_reason?: string | null;
           review_count_at_agg?: number | null;
           rating_at_agg?: number | null;
           created_at?: string;
