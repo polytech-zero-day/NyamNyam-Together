@@ -1,83 +1,40 @@
-// 예산 보수적 컷 (domain-rules.md 2장)
-// 우선순위: restaurants.avg_price_min (DB 웹서치 확인값) → 둘 다 null이면 category_name 추정 보조.
-// 집계: 상한값 중 낮은 쪽 강하게. 완전 최솟값은 0개 위험 → P25 완충.
+// 예산 (domain-rules.md §2) — 범위 입력, max 주력 필터·min 소프트
+// 구글은 priceLevel(1~4)만 제공 → 금액을 밴드로 환산. priceLevel null이면 통과.
+// ⚠️ 원본 budget_max 배열의 P25 종합은 B 소유 → 여기서 하지 않는다(budgetMax는 집계값 입력).
 
-// [category_name 접두어, 추정 1인당 가격(원)] — 긴 접두어부터 매칭
-const CATEGORY_PRICE_ESTIMATES: Array<[string, number]> = [
-  ['음식점 > 뷔페', 35_000],
-  ['음식점 > 양식 > 스테이크', 30_000],
-  ['음식점 > 일식 > 스시', 25_000],
-  ['음식점 > 양식', 20_000],
-  ['음식점 > 일식', 18_000],
-  ['음식점 > 한식 > 육류,고기', 15_000],
-  ['음식점 > 치킨', 15_000],
-  ['음식점 > 한식', 12_000],
-  ['음식점 > 중식', 12_000],
-  ['음식점 > 패스트푸드', 8_000],
-  ['음식점 > 분식', 7_000],
-  ['음식점', 12_000],
-  ['카페,디저트', 7_000],
-  ['카페', 7_000],
-  ['주점 > 이자카야', 20_000],
-  ['주점', 20_000],
+import type { Candidate } from './types';
+
+// 금액(원) → priceLevel 밴드 (domain-rules.md §2 표)
+// TODO(데이터): 한국 priceLevel 분포 확인 후 경계 보정. priceRange(원 단위) 도입 시 정밀화.
+const BAND_BOUNDARIES: Array<[max: number, band: number]> = [
+  [12_000, 1],
+  [25_000, 2],
+  [50_000, 3],
 ];
+const TOP_BAND = 4;
 
-const DEFAULT_PRICE_ESTIMATE = 15_000;
-
-// 추정 불확실성 완충: 카카오 가격 정보 미제공으로 인한 오차 허용 범위
-const ESTIMATION_BUFFER = 1.2;
-
-export function estimatePricePerPerson(categoryName: string): number {
-  for (const [prefix, price] of CATEGORY_PRICE_ESTIMATES) {
-    if (categoryName.startsWith(prefix)) return price;
+export function bandOf(won: number): number {
+  for (const [max, band] of BAND_BOUNDARIES) {
+    if (won < max) return band;
   }
-  return DEFAULT_PRICE_ESTIMATE;
+  return TOP_BAND;
 }
 
 /**
- * budget_max 배열에서 P25(하위 25%)를 상한으로 사용.
- * 완전 최솟값 대신 P25를 써서 "후보 0개" 위험을 줄임 (완충).
+ * 예산 상한 필터 (주력).
+ * - priceLevel ≤ bandOf(budgetMax) 통과.
+ * - priceLevel null → 예산 필터 미적용(통과).
  */
-export function computeBudgetCap(budgetMaxValues: number[]): number {
-  if (budgetMaxValues.length === 0) return Infinity;
-  const sorted = [...budgetMaxValues].sort((a, b) => a - b);
-  const p25Index = Math.floor(sorted.length * 0.25);
-  return sorted[p25Index];
+export function filterByBudgetMax(candidates: Candidate[], budgetMax: number): Candidate[] {
+  const cap = bandOf(budgetMax);
+  return candidates.filter((c) => c.priceLevel === null || c.priceLevel <= cap);
 }
 
-/**
- * 예산 필터.
- * - avg_price_min이 있으면 DB 확인값 우선 사용.
- * - avg_price_min이 null이면 avg_price_max를 시도.
- * - 둘 다 null이면 category_name 기반 추정으로 폴백 (domain-rules.md 경고: 보조 수단).
- * - avg_price_min이 null인 식당 → 예산 필터 미적용, Claude 판단에 위임 (통과시킴).
- */
-export function filterByBudget<
-  T extends { avg_price_min: number | null; avg_price_max: number | null; category_name: string },
->(places: T[], budgetCap: number): T[] {
-  return places.filter((p) => {
-    if (p.avg_price_min !== null) {
-      // DB 확인값: avg_price_min이 예산 상한 이하인지
-      return p.avg_price_min <= budgetCap;
-    }
-    if (p.avg_price_max !== null) {
-      // avg_price_max만 있는 경우: 최대가가 예산 상한 이하인지
-      return p.avg_price_max <= budgetCap;
-    }
-    // 둘 다 null → Claude 판단에 위임 (필터 미적용, 통과)
-    return true;
-  });
-}
+// min 소프트 감점 (domain-rules.md §2): 하한 밴드 미만은 정렬에서 약하게 후순위.
+// 하드 필터 아님. priceLevel null이면 0(감점 없음).
+const BUDGET_MIN_PENALTY = 5;
 
-/**
- * category_name 추정 기반 예산 필터 (fallback용).
- * avg_price_min/max가 null인 식당에만 적용할 때 사용.
- */
-export function filterByBudgetEstimate<T extends { category_name: string }>(
-  places: T[],
-  budgetCap: number,
-): T[] {
-  return places.filter(
-    (p) => estimatePricePerPerson(p.category_name) <= budgetCap * ESTIMATION_BUFFER,
-  );
+export function budgetMinPenalty(priceLevel: number | null, budgetMin: number): number {
+  if (priceLevel === null) return 0;
+  return priceLevel < bandOf(budgetMin) ? BUDGET_MIN_PENALTY : 0;
 }

@@ -1,59 +1,37 @@
-import { runPipeline, RestaurantRow, Stage1Response } from '../pipeline';
+import { runPipeline } from '../pipeline';
+import type { AggregatedConstraints, Candidate } from '../types';
 
-// restaurants 마스터 행 생성. opts로 웹서치 컬럼(avg_price_min, mood, source_rating 등) 덮어쓰기.
-const mkPlace = (
-  id: string,
-  name: string,
-  category_name: string,
-  opts: Partial<RestaurantRow> = {},
-): RestaurantRow => {
-  const parts = category_name.split(' > ').map((s) => s.trim());
-  return {
-    id,
-    kakao_id: id,
-    station_id: 'gangnam',
-    name,
-    category_large: parts[0] ?? category_name,
-    category_mid: parts[1] ?? null,
-    category_small: parts[2] ?? null,
-    category_name,
-    address: '서울시 강남구',
-    road_address: null,
-    phone: null,
-    lat: 37.5,
-    lng: 127.0,
-    distance_m: 300,
-    kakao_url: `http://place.map.kakao.com/${id}`,
-    price_level: null,
-    avg_price_min: null,
-    avg_price_max: null,
-    mood: null,
-    source: null,
-    source_rating: null,
-    source_url: null,
-    crawled_at: null,
-    created_at: '2026-01-01T00:00:00Z',
-    ...opts,
-  };
-};
+const asOf = new Date('2026-06-23T00:00:00Z');
 
-const mkResponse = (
-  drink: Stage1Response['drink'],
-  budget_max: number,
-  categories: string[],
-  mood: Stage1Response['mood'] = null,
-): Stage1Response => ({ drink, budget_min: 0, budget_max, categories, mood });
+const cand = (ref: string, types: string[], overrides: Partial<Candidate> = {}): Candidate => ({
+  ref,
+  placeId: ref,
+  source: 'google',
+  types,
+  primaryType: types[0] ?? null,
+  priceLevel: null,
+  rating: null,
+  userRatingCount: null,
+  name: ref,
+  distanceM: 300,
+  placeTypeOverride: null,
+  categoryKorean: null,
+  openDate: null,
+  ...overrides,
+});
+
+const constraints = (overrides: Partial<AggregatedConstraints> = {}): AggregatedConstraints => ({
+  drink: { drinker: 0, ok: 2, uncomfortable: 0 },
+  budgetMin: 0,
+  budgetMax: 30_000,
+  categories: [],
+  moodDominant: null,
+  ...overrides,
+});
 
 describe('runPipeline — 빈 입력', () => {
-  it('places 없음 → 빈 결과', () => {
-    expect(runPipeline([], [mkResponse('ok', 20_000, ['한식'])])).toEqual({
-      recommended: [],
-      relaxedConstraints: [],
-    });
-  });
-
-  it('responses 없음 → 빈 결과', () => {
-    expect(runPipeline([mkPlace('1', '한식당', '음식점 > 한식')], [])).toEqual({
+  it('candidates 없음 → 빈 결과', () => {
+    expect(runPipeline([], constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf)).toEqual({
       recommended: [],
       relaxedConstraints: [],
     });
@@ -61,122 +39,153 @@ describe('runPipeline — 빈 입력', () => {
 });
 
 describe('runPipeline — 정상 케이스', () => {
-  it('relaxedConstraints 없음, 최대 10개 반환', () => {
-    const places = Array.from({ length: 15 }, (_, i) =>
-      mkPlace(String(i), `식당${i}`, '음식점 > 한식'),
-    );
-    const responses = [mkResponse('ok', 30_000, ['한식']), mkResponse('ok', 30_000, ['한식'])];
-    const result = runPipeline(places, responses);
+  it('relaxed 없음, 최대 10개', () => {
+    const candidates = Array.from({ length: 15 }, (_, i) => cand(String(i), ['korean_restaurant']));
+    const result = runPipeline(candidates, constraints(), asOf);
     expect(result.relaxedConstraints).toEqual([]);
     expect(result.recommended.length).toBeLessThanOrEqual(10);
-    expect(result.recommended.every((p) => !p.relaxed)).toBe(true);
+    expect(result.recommended.every((c) => !c.relaxed)).toBe(true);
   });
 
-  it('rank: 1부터 시작, 오름차순', () => {
-    const places = [mkPlace('1', '한식', '음식점 > 한식'), mkPlace('2', '일식', '음식점 > 일식')];
-    const responses = [mkResponse('ok', 30_000, ['한식']), mkResponse('ok', 30_000, ['한식'])];
-    const result = runPipeline(places, responses);
+  it('rank 1부터 오름차순', () => {
+    const candidates = [cand('1', ['korean_restaurant']), cand('2', ['japanese_restaurant'])];
+    const result = runPipeline(candidates, constraints(), asOf);
     expect(result.recommended[0].rank).toBe(1);
-    expect(result.recommended[result.recommended.length - 1].rank).toBe(result.recommended.length);
+    expect(result.recommended.at(-1)?.rank).toBe(result.recommended.length);
   });
 
-  it('카테고리 2표 매칭 장소가 앞에 위치', () => {
-    const places = [
-      mkPlace('1', '중식당', '음식점 > 중식'),
-      mkPlace('2', '한식당', '음식점 > 한식'),
+  it('카테고리 2표 매칭 후보가 앞', () => {
+    const candidates = [cand('1', ['chinese_restaurant']), cand('2', ['korean_restaurant'])];
+    const result = runPipeline(candidates, constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf);
+    expect(result.recommended[0].ref).toBe('2');
+  });
+
+  it('placeType 스냅샷 채워짐', () => {
+    const candidates = [cand('1', ['cafe']), cand('2', ['barbecue_restaurant'])];
+    const result = runPipeline(candidates, constraints({ drink: { drinker: 2, ok: 0, uncomfortable: 0 } }), asOf);
+    expect(result.recommended.find((c) => c.ref === '1')?.placeType).toBe('general');
+    expect(result.recommended.find((c) => c.ref === '2')?.placeType).toBe('compatible');
+  });
+
+  it('리뷰 수 스냅샷 + 동점 시 리뷰 수 정렬', () => {
+    const candidates = [
+      cand('1', ['korean_restaurant'], { userRatingCount: 10, rating: 4.0 }),
+      cand('2', ['korean_restaurant'], { userRatingCount: 200, rating: 4.5 }),
     ];
-    const responses = [mkResponse('ok', 30_000, ['한식']), mkResponse('ok', 30_000, ['한식'])];
-    const result = runPipeline(places, responses);
-    expect(result.recommended[0].id).toBe('2'); // 한식이 앞
-  });
-
-  it('place_type이 classifyPlaceType 결과로 채워짐', () => {
-    const places = [mkPlace('1', '카페', '카페'), mkPlace('2', '이자카야', '주점 > 이자카야')];
-    const responses = [mkResponse('drinker', 30_000, [])];
-    const result = runPipeline(places, responses);
-    const cafe = result.recommended.find((p) => p.id === '1');
-    const izakaya = result.recommended.find((p) => p.id === '2');
-    expect(cafe?.place_type).toBe('general');
-    expect(izakaya?.place_type).toBe('compatible');
+    const result = runPipeline(candidates, constraints(), asOf);
+    expect(result.recommended[0].ref).toBe('2');
+    expect(result.recommended[0].reviewCountAtAgg).toBe(200);
+    expect(result.recommended[0].ratingAtAgg).toBe(4.5);
   });
 });
 
 describe('runPipeline — 술 제약 (끝까지 유지)', () => {
   it('uncomfortable 있으면 주점 전부 제외', () => {
-    const places = [
-      mkPlace('1', '한식당', '음식점 > 한식'),
-      mkPlace('2', '이자카야', '주점 > 이자카야'),
-      mkPlace('3', '바', '주점 > 바'),
+    const candidates = [
+      cand('1', ['korean_restaurant']),
+      cand('2', ['barbecue_restaurant']),
+      cand('3', ['bar']),
     ];
-    const responses = [mkResponse('uncomfortable', 30_000, []), mkResponse('ok', 30_000, [])];
-    const result = runPipeline(places, responses);
-    const ids = result.recommended.map((p) => p.id);
-    expect(ids).toContain('1');
-    expect(ids).not.toContain('2');
-    expect(ids).not.toContain('3');
+    const result = runPipeline(
+      candidates,
+      constraints({ drink: { drinker: 1, ok: 1, uncomfortable: 1 } }),
+      asOf,
+    );
+    const refs = result.recommended.map((c) => c.ref);
+    expect(refs).toEqual(['1']);
   });
 
-  it('ok만: drink_required(바) 제외, compatible(이자카야) 포함', () => {
-    const places = [
-      mkPlace('1', '한식당', '음식점 > 한식'),
-      mkPlace('2', '이자카야', '주점 > 이자카야'),
-      mkPlace('3', '칵테일바', '주점 > 칵테일바'),
+  it('ok 포함: drink_required(bar) 제외, compatible 포함', () => {
+    const candidates = [
+      cand('1', ['korean_restaurant']),
+      cand('2', ['barbecue_restaurant']),
+      cand('3', ['bar']),
     ];
-    const responses = [mkResponse('ok', 30_000, []), mkResponse('ok', 30_000, [])];
-    const result = runPipeline(places, responses);
-    const ids = result.recommended.map((p) => p.id);
-    expect(ids).toContain('1');
-    expect(ids).toContain('2');
-    expect(ids).not.toContain('3');
+    const result = runPipeline(
+      candidates,
+      constraints({ drink: { drinker: 1, ok: 1, uncomfortable: 0 } }),
+      asOf,
+    );
+    const refs = result.recommended.map((c) => c.ref);
+    expect(refs).toContain('1');
+    expect(refs).toContain('2');
+    expect(refs).not.toContain('3');
   });
 });
 
-describe('runPipeline — 완화 로직', () => {
-  it('완화1: 예산 필터로 0개 → 예산 완화 + relaxed=true', () => {
-    // avg_price_min 12000 > 상한 5000 → 예산 필터로 0개 → 예산 완화
-    const places = [mkPlace('1', '한식', '음식점 > 한식', { avg_price_min: 12_000 })];
-    const responses = [mkResponse('ok', 5_000, ['한식']), mkResponse('ok', 5_000, ['한식'])];
-    const result = runPipeline(places, responses);
+describe('runPipeline — 예산 필터 + 완화', () => {
+  it('priceLevel null은 예산 필터 통과', () => {
+    const candidates = [cand('1', ['korean_restaurant'], { priceLevel: null })];
+    const result = runPipeline(candidates, constraints({ budgetMax: 5_000 }), asOf);
+    expect(result.recommended).toHaveLength(1);
+    expect(result.relaxedConstraints).toEqual([]);
+  });
+
+  it('완화1: 예산으로 0개 → budget 완화 + relaxed=true', () => {
+    // budgetMax 5_000 → band 1. priceLevel 3은 탈락 → 완화
+    const candidates = [cand('1', ['korean_restaurant'], { priceLevel: 3 })];
+    const result = runPipeline(candidates, constraints({ budgetMax: 5_000 }), asOf);
     expect(result.relaxedConstraints).toEqual(['budget']);
     expect(result.recommended).toHaveLength(1);
     expect(result.recommended[0].relaxed).toBe(true);
   });
 
-  it('완화1에서도 술 제약은 유지됨', () => {
-    const places = [
-      mkPlace('1', '한식당', '음식점 > 한식', { avg_price_min: 12_000 }),
-      mkPlace('2', '바', '주점 > 바', { avg_price_min: 12_000 }),
+  it('완화1에서도 술 제약 유지', () => {
+    const candidates = [
+      cand('1', ['korean_restaurant'], { priceLevel: 4 }),
+      cand('2', ['bar'], { priceLevel: 4 }),
     ];
-    const responses = [mkResponse('uncomfortable', 5_000, [])];
-    const result = runPipeline(places, responses);
+    const result = runPipeline(
+      candidates,
+      constraints({ budgetMax: 5_000, drink: { drinker: 0, ok: 0, uncomfortable: 1 } }),
+      asOf,
+    );
     expect(result.relaxedConstraints).toContain('budget');
-    const ids = result.recommended.map((p) => p.id);
-    expect(ids).toContain('1');
-    expect(ids).not.toContain('2'); // 바는 술 제약으로 여전히 제외
+    expect(result.recommended.map((c) => c.ref)).toEqual(['1']);
   });
 
-  it('완화3: 술 제약 후 장소 없음 → radius 플래그', () => {
-    // uncomfortable인데 주점만 있는 경우
-    const places = [mkPlace('1', '바', '주점 > 바')];
-    const responses = [mkResponse('uncomfortable', 30_000, [])];
-    const result = runPipeline(places, responses);
+  it('완화3: 술 제약 후 0개 → radius 플래그', () => {
+    const candidates = [cand('1', ['bar'])];
+    const result = runPipeline(
+      candidates,
+      constraints({ drink: { drinker: 0, ok: 0, uncomfortable: 1 } }),
+      asOf,
+    );
     expect(result.recommended).toHaveLength(0);
     expect(result.relaxedConstraints).toContain('radius');
   });
 });
 
-describe('runPipeline — 분위기 가중치', () => {
-  it('quiet 다수 시 카페가 동점 일반 식당보다 앞에 위치', () => {
-    const places = [
-      mkPlace('1', '식당', '음식점 > 한식'),
-      mkPlace('2', '카페', '카페', { mood: ['조용한'] }), // 웹서치 확인 mood 배열
+describe('runPipeline — longevity (등록 식당)', () => {
+  it('동점일 때 오래된 등록 식당이 앞', () => {
+    const candidates = [
+      cand('g', ['korean_restaurant'], { source: 'google', userRatingCount: 5 }),
+      cand('o', [], {
+        source: 'owner',
+        categoryKorean: '한식',
+        placeTypeOverride: 'general',
+        openDate: '2000-01-01',
+        userRatingCount: 5,
+      }),
     ];
-    const responses = [
-      mkResponse('ok', 30_000, [], 'quiet'),
-      mkResponse('ok', 30_000, [], 'quiet'),
+    const result = runPipeline(candidates, constraints({ categories: [{ name: '한식', votes: 2 }] }), asOf);
+    // 둘 다 한식 매칭(10점), owner는 longevity +3 → owner 앞
+    expect(result.recommended[0].ref).toBe('o');
+  });
+});
+
+describe('runPipeline — min 소프트 감점', () => {
+  it('하한 미만 밴드는 후순위(동일 카테고리)', () => {
+    const candidates = [
+      cand('cheap', ['korean_restaurant'], { priceLevel: 1, userRatingCount: 100 }),
+      cand('mid', ['korean_restaurant'], { priceLevel: 3, userRatingCount: 100 }),
     ];
-    const result = runPipeline(places, responses);
-    // 카테고리 동점(0점씩), 카페는 mood '조용한' 2점 보너스 → 카페 앞
-    expect(result.recommended[0].id).toBe('2');
+    // budgetMin 25_000 → band 3. cheap(1)은 감점 → mid 앞
+    const result = runPipeline(
+      candidates,
+      constraints({ budgetMin: 25_000, budgetMax: 50_000 }),
+      asOf,
+    );
+    expect(result.recommended[0].ref).toBe('mid');
   });
 });

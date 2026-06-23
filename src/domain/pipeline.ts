@@ -1,139 +1,122 @@
 // 2단 파이프라인 (domain-rules.md 전체)
-// LLM에게 식당 선정을 위임하지 않는다. 모든 선정 로직은 순수 함수.
+// 입력 = "이미 집계된 제약"(AggregatedConstraints) + 후보 풀(구글 라이브 ∪ 등록 식당).
+// 선정은 코드가 끝낸다(순수 함수). LLM은 ai_reason만(파이프라인 밖).
 
-import { DrinkPref, PlaceType, classifyPlaceType, filterByPlaceType } from './placeType';
-import { computeBudgetCap, filterByBudget } from './budget';
-import { getEligibleCategories, scoreByCategoryMatch } from './category';
-import { MoodPref, computeQuietRatio, computeMoodScore } from './mood';
+import type { AggregatedConstraints, Candidate, RankedCandidate } from './types';
+import { placeTypeOf, filterByPlaceType } from './placeType';
+import { filterByBudgetMax, budgetMinPenalty } from './budget';
+import { getEligibleCategories, scoreByCategoryMatch, googleTypesForCategory } from './category';
+import { computeMoodScore } from './mood';
+import { longevityScore } from './longevity';
 
 export type RelaxedConstraint = 'budget' | 'category' | 'radius';
 
-// stage1 투표에서 수집한 참여자 선호
-export interface Stage1Response {
-  drink: DrinkPref;
-  budget_min: number;
-  budget_max: number;
-  categories: string[];
-  mood: MoodPref | null;
-}
-
-// restaurants 마스터 테이블 행 (카카오 + 웹서치 보완)
-export interface RestaurantRow {
-  id: string; // restaurants.id (uuid)
-  kakao_id: string; // 카카오 place id
-  station_id: string;
-  name: string;
-  category_large: string;
-  category_mid: string | null;
-  category_small: string | null;
-  category_name: string;
-  address: string | null;
-  road_address: string | null;
-  phone: string | null;
-  lat: number;
-  lng: number;
-  distance_m: number | null;
-  kakao_url: string | null;
-  price_level: number | null;
-  avg_price_min: number | null;
-  avg_price_max: number | null;
-  mood: string[] | null; // 웹서치 확인값. null이면 가중치 0
-  source: string | null;
-  source_rating: number | null; // null이면 카카오 accuracy 순서 유지
-  source_url: string | null;
-  crawled_at: string | null;
-  created_at: string;
-}
-
-export interface RecommendedPlace extends RestaurantRow {
-  place_type: PlaceType;
-  score: number;
-  rank: number;
-  relaxed: boolean;
-}
-
 export interface PipelineResult {
-  recommended: RecommendedPlace[];
+  recommended: RankedCandidate[];
   relaxedConstraints: RelaxedConstraint[];
 }
 
-// DB엔 최대 STORE_COUNT까지 저장; 화면엔 상위 DISPLAY_COUNT만 노출
+// DB엔 최대 STORE_COUNT까지 저장; 화면엔 상위 3~4만 노출(라우트 정렬).
 const STORE_COUNT = 10;
 
-function scorePlace(
-  place: RestaurantRow,
+// 등록 식당은 한글 분류를 google types로 환산해 카테고리 매칭에 참여시킨다.
+function effectiveTypes(c: Candidate): string[] {
+  if (c.categoryKorean) {
+    return [...c.types, ...googleTypesForCategory(c.categoryKorean)];
+  }
+  return c.types;
+}
+
+function scoreCandidate(
+  c: Candidate,
   eligibleCategories: string[],
-  quietRatio: number,
+  moodDominant: AggregatedConstraints['moodDominant'],
+  budgetMin: number,
+  asOf: Date,
 ): number {
   return (
-    scoreByCategoryMatch(place.category_name, eligibleCategories) +
-    computeMoodScore(place.mood, quietRatio)
+    scoreByCategoryMatch(effectiveTypes(c), eligibleCategories) +
+    longevityScore(c.openDate, asOf) +
+    computeMoodScore(moodDominant) -
+    budgetMinPenalty(c.priceLevel, budgetMin)
   );
 }
 
-function rankPlaces(
-  places: RestaurantRow[],
+function rankCandidates(
+  candidates: Candidate[],
+  constraints: AggregatedConstraints,
   eligibleCategories: string[],
-  quietRatio: number,
   relaxed: boolean,
-): RecommendedPlace[] {
-  return [...places]
+  asOf: Date,
+): RankedCandidate[] {
+  const scoreOf = (c: Candidate): number =>
+    scoreCandidate(c, eligibleCategories, constraints.moodDominant, constraints.budgetMin, asOf);
+
+  return [...candidates]
     .sort((a, b) => {
-      // 1순위: 카테고리 + 분위기 복합 점수 (높을수록 앞)
-      const scoreDiff =
-        scorePlace(b, eligibleCategories, quietRatio) -
-        scorePlace(a, eligibleCategories, quietRatio);
+      // 1순위: 선호형 복합 점수 (카테고리 + longevity − min소프트)
+      const scoreDiff = scoreOf(b) - scoreOf(a);
       if (scoreDiff !== 0) return scoreDiff;
 
-      // 2순위: source_rating DESC NULLS LAST
-      // null이면 카카오 accuracy 순서(JS 안정 정렬로 상대 순서 유지)
-      const aRating = a.source_rating ?? Number.NEGATIVE_INFINITY;
-      const bRating = b.source_rating ?? Number.NEGATIVE_INFINITY;
-      if (aRating !== bRating) return bRating - aRating;
+      // 2순위: 리뷰 수(userRatingCount) 내림차순, null 후순위
+      const aReviews = a.userRatingCount ?? -1;
+      const bReviews = b.userRatingCount ?? -1;
+      if (aReviews !== bReviews) return bReviews - aReviews;
 
       // 3순위: 거리 오름차순
-      return (a.distance_m ?? 0) - (b.distance_m ?? 0);
+      return (a.distanceM ?? Number.POSITIVE_INFINITY) - (b.distanceM ?? Number.POSITIVE_INFINITY);
     })
     .slice(0, STORE_COUNT)
-    .map((place, idx) => ({
-      ...place,
-      place_type: classifyPlaceType(place.category_name),
-      score: scorePlace(place, eligibleCategories, quietRatio),
+    .map((c, idx) => ({
+      ...c,
+      placeType: placeTypeOf(c),
+      score: scoreOf(c),
       rank: idx + 1,
       relaxed,
+      reviewCountAtAgg: c.userRatingCount,
+      ratingAtAgg: c.rating,
     }));
 }
 
-export function runPipeline(places: RestaurantRow[], responses: Stage1Response[]): PipelineResult {
-  if (responses.length === 0 || places.length === 0) {
+/**
+ * 2단 파이프라인.
+ * - Stage1 필터형: 술 분포(끝까지 유지) → 예산 상한.
+ * - Stage2 선호형: 카테고리 2표 매칭 + longevity + min소프트 정렬.
+ * - 완화 순서(domain-rules.md §7): 예산 → 카테고리 → 반경. 술 제약은 끝까지 유지.
+ *
+ * @param asOf longevity 기준 시각(테스트 결정성). 기본 현재.
+ */
+export function runPipeline(
+  candidates: Candidate[],
+  constraints: AggregatedConstraints,
+  asOf: Date = new Date(),
+): PipelineResult {
+  if (candidates.length === 0) {
     return { recommended: [], relaxedConstraints: [] };
   }
 
-  const drinkPrefs = responses.map((r) => r.drink);
-  const budgetCap = computeBudgetCap(responses.map((r) => r.budget_max));
-  const eligibleCategories = getEligibleCategories(responses.map((r) => r.categories));
-  const quietRatio = computeQuietRatio(responses.map((r) => r.mood));
+  const eligibleCategories = getEligibleCategories(constraints.categories);
 
-  // Stage 1: 필터형 — 술 타입 + 예산 (술 제약은 완화하지 않음)
-  const typeFiltered = filterByPlaceType(places, drinkPrefs);
-  const budgetFiltered = filterByBudget(typeFiltered, budgetCap);
+  // Stage1: 술 타입(완화 안 함) → 예산 상한
+  const typeFiltered = filterByPlaceType(candidates, constraints.drink);
+  const budgetFiltered = filterByBudgetMax(typeFiltered, constraints.budgetMax);
 
-  // Stage 2: 선호형 정렬 — 카테고리 점수 + 분위기 + source_rating + 거리
+  // Stage2: 선호형 정렬
   if (budgetFiltered.length > 0) {
     return {
-      recommended: rankPlaces(budgetFiltered, eligibleCategories, quietRatio, false),
+      recommended: rankCandidates(budgetFiltered, constraints, eligibleCategories, false, asOf),
       relaxedConstraints: [],
     };
   }
 
-  // 완화 1: 예산 완충폭 확대 → typeFiltered 전체로 확장 (술 제약 유지)
+  // 완화1: 예산(min 하한 먼저 → 상한까지) — 술 제약 유지, typeFiltered 전체로 확장
   if (typeFiltered.length > 0) {
     return {
-      recommended: rankPlaces(typeFiltered, eligibleCategories, quietRatio, true),
+      recommended: rankCandidates(typeFiltered, constraints, eligibleCategories, true, asOf),
       relaxedConstraints: ['budget'],
     };
   }
 
-  // 완화 2·3: 카테고리·반경 — 역 반경 내 장소 부족, 반경 확장 필요
+  // 완화2·3: 술 제약 후 후보 0개 → 카테고리·반경. 반경 확대 재호출은 recommend 서비스가 수행.
   return { recommended: [], relaxedConstraints: ['budget', 'category', 'radius'] };
 }
