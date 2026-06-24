@@ -35,3 +35,9 @@ logs/
 # IDE
 .vscode/
 .idea/
+
+# 토스 mTLS 인증서 (콘솔 발급 — 절대 커밋 금지)
+.security/
+
+# 학습 정리 파일 (로컬 전용)
+education/

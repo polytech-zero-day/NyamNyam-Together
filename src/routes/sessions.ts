@@ -6,7 +6,7 @@ import { supabase } from '../config/supabase';
 // requireToss: 그룹 생성·종료는 토스 host만(인증 모델 B). 참여·조회는 requireAuth(익명 허용).
 import { requireAuth, requireToss, AuthRequest } from '../middleware/auth';
 import { aggregate, checkDeadlineAndAggregate } from '../services/aggregation';
-// 우리(A) station_places 헬퍼 위치 이동(kakao → googlePlaces)에 따른 import 동기화. 세션 로직 불변(B 소유).
+import { finalizeSession, FinalizeError } from '../services/finalVote';
 import { ensureStation } from '../services/googlePlaces';
 
 const router = Router();
@@ -121,6 +121,38 @@ router.post('/:id/close', requireToss, async (req: AuthRequest, res: Response) =
 
   await aggregate(req.params.id);
   res.json({ message: '집계를 시작했습니다' });
+});
+
+// POST /sessions/:id/finalize — stage2 집계, 최종 식당 확정 (host=토스 필수)
+// 동점 시: isTied:true + tiedIds 반환 (상태 미전환). 호스트가 forceWinnerId로 재호출해 해소.
+router.post('/:id/finalize', requireToss, async (req: AuthRequest, res: Response) => {
+  const { forceWinnerId } = req.body as { forceWinnerId?: string };
+
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('host_user_key')
+    .eq('id', req.params.id)
+    .single();
+
+  if (!session) {
+    res.status(404).json({ code: 'NOT_FOUND', message: '세션을 찾을 수 없습니다' });
+    return;
+  }
+  if (session.host_user_key !== req.userKey) {
+    res.status(403).json({ code: 'FORBIDDEN', message: '생성자만 집계할 수 있습니다' });
+    return;
+  }
+
+  try {
+    const result = await finalizeSession(req.params.id, forceWinnerId);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof FinalizeError) {
+      res.status(err.status).json({ code: err.code, message: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 // GET /sessions/:id/progress — N/M명 stage1 응답 현황

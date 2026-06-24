@@ -1,7 +1,6 @@
-// ⚠️ 잠정 절충안 (PROVISIONAL) — 신스택 B 집계: stage1 votes → AggregatedConstraints
-// 원래 B 소유다. B 담당(K-yoon03 등) 합류 전까지 통합 브랜치(integ/backend-merge)가 실제 그룹
-// 제약을 반영하도록 우리가 임시 구현한다. **합류 시 검토·교체 대상.** (integration-contract.md §3·§7)
-// 집계 규칙은 단순·방어적: 분포 보존(술), 예산은 max 보수 컷·min 소프트, 카테고리는 표수 그대로.
+// stage1 votes → AggregatedConstraints 집계
+// 집계 규칙: 술 분포 보존, 예산 max는 P25 보수 컷, min은 최솟값, 카테고리 표수 그대로.
+// 2표 임계·매핑은 C(domain/)가 적용 — 여기선 표수만 집계한다.
 
 import type { AggregatedConstraints, MoodPref } from '../domain/types';
 import type { DrinkValue, MoodValue } from '../types/database.types';
@@ -14,19 +13,11 @@ export interface Stage1Vote {
   mood: MoodValue | null;
 }
 
-// 하위 p 분위수(정렬된 배열 기준). 빈 배열이면 fallback.
 function percentile(sorted: number[], p: number, fallback: number): number {
   if (sorted.length === 0) return fallback;
   return sorted[Math.floor(sorted.length * p)];
 }
 
-/**
- * stage1 votes를 AggregatedConstraints로 집계 (잠정).
- * - drink: 분포(인원수) 보존 — 매핑은 C(domain/placeType)가 함
- * - budgetMax: 상한 주력 → P25 보수 컷(0개 위험 완화). budgetMin: 하한 소프트 → 최솟값
- * - categories: 한글 분류별 표수 그대로(2표 임계는 C가 적용)
- * - moodDominant: quiet 비율 > 0.5면 quiet, 아니면 any, 응답 없으면 null
- */
 export function buildConstraintsFromVotes(votes: Stage1Vote[]): AggregatedConstraints {
   const drink = { drinker: 0, ok: 0, uncomfortable: 0 };
   for (const v of votes) drink[v.drink] += 1;
@@ -39,6 +30,8 @@ export function buildConstraintsFromVotes(votes: Stage1Vote[]): AggregatedConstr
     .map((v) => v.budget_min)
     .filter((x): x is number => typeof x === 'number')
     .sort((a, b) => a - b);
+
+  // budgetMax: P25 보수 컷 (상한이 낮은 사람 기준으로 좁힘). budgetMin: 소프트 → 최솟값
   const budgetMax = percentile(maxes, 0.25, Number.POSITIVE_INFINITY);
   const budgetMin = mins.length ? mins[0] : 0;
 

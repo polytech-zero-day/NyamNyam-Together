@@ -1,8 +1,5 @@
-// 상태전환 브리지 + 잠정 집계 (integ/backend-merge 절충안)
-// ⚠️ 상태전환(collecting→aggregating→voting)·마감 트리거·votes 원본 집계는 본래 B 소유다.
-// B 담당 합류 전까지 통합 브랜치가 실제 그룹 제약을 반영하도록 **잠정 절충안**으로 둔다.
-// 집계 로직은 services/voteAggregation.ts(PROVISIONAL)에 분리 — B 합류 시 그 모듈+이 파일을 교체.
-// 우리(C)의 정식 연결점은 recommend(sessionId, AggregatedConstraints, Station) 한 곳뿐.
+// 상태전환 브리지: collecting→aggregating→voting
+// stage1 votes 조회 → 제약 집계(voteAggregation) → C 추천 파이프라인(recommend) 호출
 
 import { supabase } from '../config/supabase';
 import { recommend } from './recommend';
@@ -10,7 +7,6 @@ import { buildConstraintsFromVotes, Stage1Vote } from './voteAggregation';
 import type { Station } from '../domain/types';
 import type { DrinkValue, MoodValue } from '../types/database.types';
 
-// stage1 votes 조회 (잠정 — B 합류 시 B 집계 RPC/서비스로 대체)
 async function getStage1Votes(sessionId: string): Promise<Stage1Vote[]> {
   const { data, error } = await supabase
     .from('votes')
@@ -28,8 +24,8 @@ async function getStage1Votes(sessionId: string): Promise<Stage1Vote[]> {
 }
 
 /**
- * 집계 실행: collecting → aggregating → voting.
- * (상태머신·집계는 본래 B 소유 — 여기선 잠정. 우리 연결점은 recommend() 호출.)
+ * stage1 마감 집계: collecting → aggregating → voting
+ * 실패 시 collecting으로 롤백해 재시도 가능하게 한다.
  */
 export async function aggregate(sessionId: string): Promise<void> {
   const { data: session, error } = await supabase
@@ -40,12 +36,11 @@ export async function aggregate(sessionId: string): Promise<void> {
     .select('station_id')
     .single();
 
-  if (error || !session) return; // 이미 처리 중이거나 상태 불일치
+  if (error || !session) return; // 이미 처리 중이거나 상태 불일치 — 멱등 처리
 
   const stationId = session.station_id as string;
 
   try {
-    // 역 좌표는 station_places(우리 소유)에서 조회 — Nearby 호출 좌표원
     const { data: stationMeta } = await supabase
       .from('station_places')
       .select('station_lat, station_lng')
@@ -59,11 +54,10 @@ export async function aggregate(sessionId: string): Promise<void> {
       lng: Number(stationMeta.station_lng),
     };
 
-    // 잠정 절충안: stage1 votes → AggregatedConstraints (B 합류 시 B 집계로 교체)
     const votes = await getStage1Votes(sessionId);
     const constraints = buildConstraintsFromVotes(votes);
 
-    // ★ 우리(C) 정식 연결점
+    // C 파트 연결점 — AggregatedConstraints → recommendations 작성
     await recommend(sessionId, constraints, station);
 
     await supabase
@@ -72,7 +66,6 @@ export async function aggregate(sessionId: string): Promise<void> {
       .eq('id', sessionId)
       .eq('status', 'aggregating');
   } catch (err) {
-    // 실패 시 collecting으로 롤백(영구 고착 방지 → 재시도 가능)
     console.error(`aggregate 실패 (${sessionId}) — collecting으로 롤백:`, err);
     await supabase
       .from('sessions')
@@ -82,7 +75,7 @@ export async function aggregate(sessionId: string): Promise<void> {
   }
 }
 
-/** 마감시간 Lazy 체크: now > deadline 이면 집계 트리거 (본래 B 소유, 잠정). */
+/** 마감시간 Lazy 체크: deadline 초과 시 집계 트리거 */
 export async function checkDeadlineAndAggregate(sessionId: string): Promise<void> {
   const { data: session } = await supabase
     .from('sessions')

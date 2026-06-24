@@ -59,6 +59,7 @@ export interface Database {
           status: SessionStatus;
           sort_mode: SortMode;
           sort_seed: number | null;
+          winner_recommendation_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -74,6 +75,7 @@ export interface Database {
           status?: SessionStatus;
           sort_mode?: SortMode;
           sort_seed?: number | null;
+          winner_recommendation_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -89,6 +91,7 @@ export interface Database {
           status?: SessionStatus;
           sort_mode?: SortMode;
           sort_seed?: number | null;
+          winner_recommendation_id?: string | null;
           created_at?: string;
         };
         Relationships: [];

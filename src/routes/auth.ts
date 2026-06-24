@@ -1,5 +1,6 @@
-// POST /auth/login (api-spec.md)
-// 토스 인가코드 → userKey → JWT 발급
+// POST /auth/login  — 토스 인가코드 → userKey → JWT 발급
+// POST /auth/anon   — 익명 참가자 토큰 발급
+// POST /auth/dev-login — 개발 전용 테스트 토큰 (NODE_ENV=development만)
 
 import { Router, Request, Response } from 'express';
 import { exchangeAuthorizationCode, getUserKey } from '../services/tossLogin';
@@ -21,6 +22,18 @@ router.post('/anon', anonLimiter, (_req: Request, res: Response) => {
   const { token } = signAnonToken();
   res.json({ token });
 });
+
+// 개발 전용 — 토스 OAuth 없이 호스트 토큰 발급. 프로덕션에서는 라우트 자체가 등록되지 않는다.
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/dev-login', (req: Request, res: Response) => {
+    const userKey = parseInt(String((req.body as { userKey?: string })?.userKey ?? '1001'), 10);
+    if (isNaN(userKey) || userKey <= 0) {
+      res.status(400).json({ code: 'BAD_REQUEST', message: 'userKey는 양수 정수여야 합니다' });
+      return;
+    }
+    res.json({ token: signToken(userKey), userKey });
+  });
+}
 
 router.post('/login', async (req: Request, res: Response) => {
   const { authorizationCode, referrer } = req.body as {
