@@ -10,11 +10,15 @@ let _httpClient: Deno.HttpClient | null = null;
 
 function getMtlsClient(): Deno.HttpClient {
   if (_httpClient) return _httpClient;
-  const certChain = Deno.env.get('TOSS_MTLS_CERT');
-  const privateKey = Deno.env.get('TOSS_MTLS_KEY');
-  if (!certChain || !privateKey) {
+  const certRaw = Deno.env.get('TOSS_MTLS_CERT');
+  const keyRaw = Deno.env.get('TOSS_MTLS_KEY');
+  if (!certRaw || !keyRaw) {
     throw new Error('TOSS_MTLS_CERT and TOSS_MTLS_KEY must be set in Supabase Secrets');
   }
+  // Supabase Secrets CLI로 설정 시 base64 인코딩으로 저장 → 멀티라인 문제 회피.
+  // base64 여부: '-----BEGIN' 미포함이면 base64로 간주.
+  const certChain = certRaw.includes('-----BEGIN') ? certRaw : atob(certRaw);
+  const privateKey = keyRaw.includes('-----BEGIN') ? keyRaw : atob(keyRaw);
   _httpClient = Deno.createHttpClient({ certChain, privateKey });
   return _httpClient;
 }

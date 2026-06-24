@@ -23,7 +23,9 @@ import type { PlaceSource, PlaceType } from '../_shared/database.types.ts';
 import { classifyPlaceType } from '../_shared/domain/placeType.ts';
 import { googleTypesForCategory } from '../_shared/domain/category.ts';
 
-const app = new Hono();
+// Supabase strips /functions/v1 but keeps the function name in path.
+// Requests arrive as /api/health, /api/sessions, etc.
+const app = new Hono().basePath('/api');
 
 // CORS — Toss WebView(크로스오리진)에서 호출. CORS_ORIGIN 환경변수로 허용 출처 제한 가능.
 const corsOriginEnv = Deno.env.get('CORS_ORIGIN');
@@ -39,6 +41,9 @@ app.use(
 // ── Health ───────────────────────────────────────────────────────────────────
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
+
+// DEBUG: 모든 경로 캐치 - 배포 후 URL 경로 확인용
+app.all('/__debug', (c) => c.json({ url: c.req.url, path: new URL(c.req.url).pathname, method: c.req.method }));
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -647,4 +652,4 @@ app.onError((err, c) => {
   return c.json({ code: 'INTERNAL_ERROR', message: '서버 오류가 발생했습니다' }, 500);
 });
 
-Deno.serve(app.fetch);
+export default { fetch: app.fetch.bind(app) };
