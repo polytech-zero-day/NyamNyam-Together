@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+package-lock.json
+src/types/database.types.ts
+
+# 손으로 관리하는 문서는 자동 리포맷 제외 (테이블/한글 reflow 방지)
+*.md
+docs/**/*.md

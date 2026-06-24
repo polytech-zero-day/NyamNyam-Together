@@ -1,0 +1,107 @@
+// 식당 등록 (우리 소유, api-spec.md) — 프론트 화면 우선, 백엔드 first-party 저장 최소 스텁.
+// POST /places            — 점주(owner)/시민(community) 등록 → { placeId }
+// GET  /places?stationId=  — 역의 등록 식당 목록
+// ⚠️ 검증·심사는 추후. 구글 식당(source=google)은 이 경로로 만들지 않는다.
+
+import { Router, Response } from 'express';
+import { supabase } from '../config/supabase';
+import { requireAuth, AuthRequest } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimit';
+import { classifyPlaceType } from '../domain/placeType';
+import { googleTypesForCategory } from '../domain/category';
+import type { PlaceSource, PlaceType } from '../types/database.types';
+
+const router = Router();
+
+// 등록(쓰기) 남용 방지 — 사용자당 분당 20회
+const registerLimiter = rateLimit({ windowMs: 60_000, max: 20 });
+
+const SOURCES: PlaceSource[] = ['owner', 'community'];
+const PLACE_TYPES: PlaceType[] = ['drink_required', 'compatible', 'general'];
+
+router.post('/', requireAuth, registerLimiter, async (req: AuthRequest, res: Response) => {
+  const { source, stationId, name, lat, lng, category, priceLevel, openDate, placeType } =
+    req.body as {
+      source?: string;
+      stationId?: string;
+      name?: string;
+      lat?: number;
+      lng?: number;
+      category?: string;
+      priceLevel?: number;
+      openDate?: string;
+      placeType?: string;
+    };
+
+  if (!source || !SOURCES.includes(source as PlaceSource)) {
+    res
+      .status(400)
+      .json({ code: 'BAD_REQUEST', message: 'source는 owner/community 중 하나여야 합니다' });
+    return;
+  }
+  if (!stationId || !name || lat == null || lng == null) {
+    res
+      .status(400)
+      .json({ code: 'BAD_REQUEST', message: 'stationId, name, lat, lng가 필요합니다' });
+    return;
+  }
+  if (priceLevel != null && (priceLevel < 1 || priceLevel > 4)) {
+    res.status(400).json({ code: 'BAD_REQUEST', message: 'priceLevel은 1~4여야 합니다' });
+    return;
+  }
+  if (placeType && !PLACE_TYPES.includes(placeType as PlaceType)) {
+    res.status(400).json({ code: 'BAD_REQUEST', message: 'placeType이 올바르지 않습니다' });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('places')
+    .insert({
+      source: source as PlaceSource,
+      station_id: stationId,
+      name,
+      lat,
+      lng,
+      category: category ?? null,
+      price_level: priceLevel ?? null,
+      open_date: openDate ?? null,
+      // place_type 계산·저장: body placeType 우선, 없으면 category→google types→분류.
+      // 매핑 실패(미지/빈 category) 시 classifyPlaceType이 general로 폴백 (domain-rules.md §1).
+      place_type:
+        (placeType as PlaceType | undefined) ??
+        classifyPlaceType(googleTypesForCategory(category ?? '')),
+      status: 'active',
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    console.error('place 등록 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '등록에 실패했습니다' });
+    return;
+  }
+  res.status(201).json({ placeId: data.id });
+});
+
+router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
+  const stationId = req.query.stationId as string | undefined;
+  if (!stationId) {
+    res.status(400).json({ code: 'BAD_REQUEST', message: 'stationId 쿼리가 필요합니다' });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('places')
+    .select('id, source, name, lat, lng, category, price_level, open_date, place_type, status')
+    .eq('station_id', stationId)
+    .in('source', ['owner', 'community']);
+
+  if (error) {
+    console.error('places 목록 조회 실패:', error);
+    res.status(500).json({ code: 'DB_ERROR', message: '목록을 불러오지 못했습니다' });
+    return;
+  }
+  res.json({ places: data ?? [] });
+});
+
+export default router;
