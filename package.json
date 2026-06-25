@@ -1,0 +1,58 @@
+{
+  "name": "kopo-recommend-location",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "granite dev",
+    "build": "ait build",
+    "deploy": "ait deploy",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "@apps-in-toss/web-framework": "^2.9.2",
+    "@emotion/react": "^11.14.0",
+    "@tanstack/react-query": "^5.101.1",
+    "@toss/tds-colors": "^0.1.0",
+    "@toss/tds-mobile": "^2.5.0",
+    "@toss/tds-mobile-ait": "^2.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@storybook/addon-essentials": "^8.6.14",
+    "@storybook/addon-interactions": "^8.6.14",
+    "@storybook/react-vite": "^8.6.18",
+    "@storybook/test": "^8.6.18",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.21.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^15.15.0",
+    "jsdom": "^29.1.1",
+    "msw": "^2.14.6",
+    "msw-storybook-addon": "^2.0.7",
+    "prettier": "^3.4.2",
+    "storybook": "^8.6.18",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.24.1",
+    "vite": "^6.2.0",
+    "vitest": "^4.1.9"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+<svg width="280" height="220" viewBox="0 0 280 220" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <!--
+    TEMPORARY PLACEHOLDER 일러스트 (F-04 참여자 온보딩)
+    시안(docs/screens/F-04_참여자온보딩.png)의 3D 휴대폰+단말기 일러스트로 교체하세요.
+    교체 시: 이 파일(public/participant-onboarding.svg)을 최종 에셋으로 덮어쓰거나,
+    ParticipantOnboardingScreen.tsx의 Asset.Image src 경로를 바꾸면 됩니다.
+  -->
+  <rect x="118" y="44" width="138" height="132" rx="22" fill="#E7E3FB" />
+  <rect x="118" y="44" width="138" height="132" rx="22" fill="#D9D2F7" fill-opacity="0.5" />
+  <rect x="150" y="86" width="74" height="20" rx="6" fill="#3D3D55" />
+  <rect x="44" y="58" width="92" height="150" rx="18" fill="#C9D7F7" />
+  <rect x="52" y="66" width="76" height="134" rx="12" fill="#FFFFFF" />
+  <rect x="62" y="92" width="56" height="40" rx="8" fill="#3E7BFA" />
+  <circle cx="74" cy="108" r="6" fill="#FFFFFF" />
+  <rect x="86" y="105" width="26" height="5" rx="2.5" fill="#FFFFFF" fill-opacity="0.85" />
+  <rect x="62" y="148" width="56" height="6" rx="3" fill="#E5E8EB" />
+  <rect x="62" y="162" width="38" height="6" rx="3" fill="#E5E8EB" />
+  <circle cx="34" cy="150" r="16" fill="#BFD0F5" />
+  <circle cx="240" cy="186" r="18" fill="#CFE0FB" />
+  <circle cx="208" cy="30" r="12" fill="#E7E3FB" />
+</svg>
