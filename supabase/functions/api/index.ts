@@ -256,31 +256,28 @@ app.post('/sessions/:id/finalize', requireToss, async (c) => {
   }
 });
 
-// GET /sessions/:id/progress — N/M명 stage1 응답 현황
-// 호스트는 모임 생성자(취향 입력 안 함)이므로 진행 인원 집계에서 제외한다.
-// min(최소 인원)도 함께 내려 프론트가 목표 대비 진행률을 표시할 수 있게 한다.
+// GET /sessions/:id/progress — N/정원 응답 현황
+// 호스트도 완전한 참여자(취향 입력)이므로 인원 집계에 포함한다.
+// min(= 최대 인원/정원)도 함께 내려 프론트가 정원 대비 진행률을 표시한다.
 app.get('/sessions/:id/progress', requireAuth, async (c) => {
   const sessionId = c.req.param('id');
 
   const { data: session } = await supabase
     .from('sessions')
-    .select('host_user_key, min_participants')
+    .select('min_participants')
     .eq('id', sessionId)
     .single();
-  const hostUserKey = session?.host_user_key ?? 0;
 
   const [{ count: total }, { count: responded }] = await Promise.all([
     supabase
       .from('participants')
       .select('*', { count: 'exact', head: true })
-      .eq('session_id', sessionId)
-      .neq('user_key', hostUserKey),
+      .eq('session_id', sessionId),
     supabase
       .from('votes')
       .select('*', { count: 'exact', head: true })
       .eq('session_id', sessionId)
-      .eq('stage', 1)
-      .neq('user_key', hostUserKey),
+      .eq('stage', 1),
   ]);
 
   return c.json({
@@ -343,9 +340,10 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     budgetMax?: number;
     categories?: string[];
     mood?: string;
+    sortPref?: string;
   }>();
 
-  const { drink, budgetMin, budgetMax, categories = [], mood } = body;
+  const { drink, budgetMin, budgetMax, categories = [], mood, sortPref } = body;
   if (!drink || budgetMax == null)
     return c.json({ code: 'BAD_REQUEST', message: 'drink과 budgetMax가 필요합니다' }, 400);
   if (!['drinker', 'ok', 'uncomfortable'].includes(drink))
@@ -355,10 +353,15 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     );
   if (mood && !['quiet', 'any'].includes(mood))
     return c.json({ code: 'BAD_REQUEST', message: 'mood는 quiet/any 중 하나여야 합니다' }, 400);
+  if (sortPref && !SORT_MODES.includes(sortPref as SortMode))
+    return c.json(
+      { code: 'BAD_REQUEST', message: 'sortPref는 review_count/rating/random 중 하나여야 합니다' },
+      400,
+    );
 
   const { data: session } = await supabase
     .from('sessions')
-    .select('status')
+    .select('status, min_participants')
     .eq('id', sessionId)
     .single();
 
@@ -383,11 +386,22 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     budget_max: budgetMax,
     categories,
     mood: (mood as 'quiet' | 'any' | undefined) ?? null,
+    sort_pref: (sortPref as SortMode | undefined) ?? null,
   });
 
   if (error?.code === '23505')
     return c.json({ code: 'ALREADY_VOTED', message: '이미 응답한 세션입니다' }, 409);
   if (error) return c.json({ code: 'DB_ERROR', message: error.message }, 500);
+
+  // 정원(min_participants = 최대 인원) 전원이 응답하면 자동 집계.
+  const { count } = await supabase
+    .from('votes')
+    .select('*', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('stage', 1);
+  if ((count ?? 0) >= (session.min_participants ?? 0)) {
+    await aggregate(sessionId);
+  }
 
   return c.json({ message: '응답이 완료됐습니다' }, 201);
 });

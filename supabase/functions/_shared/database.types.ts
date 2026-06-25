@@ -231,6 +231,7 @@ export interface Database {
           budget_max: number | null;
           categories: Json | null;
           mood: MoodValue | null;
+          sort_pref: string | null;
           recommendation_id: string | null;
           created_at: string;
         };
@@ -244,6 +245,7 @@ export interface Database {
           budget_max?: number | null;
           categories?: Json | null;
           mood?: MoodValue | null;
+          sort_pref?: string | null;
           recommendation_id?: string | null;
           created_at?: string;
         };
@@ -257,6 +259,7 @@ export interface Database {
           budget_max?: number | null;
           categories?: Json | null;
           mood?: MoodValue | null;
+          sort_pref?: string | null;
           recommendation_id?: string | null;
           created_at?: string;
         };
