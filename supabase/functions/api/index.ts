@@ -85,6 +85,44 @@ app.post('/auth/dev-login', async (c) => {
   return c.json({ token: signToken(userKey), userKey });
 });
 
+// ── Stations ─────────────────────────────────────────────────────────────────
+
+// GET /stations — 권역·역 목록 (세션 생성 화면 역 선택용 큐레이션 고정 목록)
+app.get('/stations', async (c) => {
+  const regions = [
+    { id: 'gangnam', name: '강남·서초·송파', stations: ['강남역','신논현역','양재역','교대역','서초역','잠실역','삼성역','선릉역','가락시장역'], lat: 37.497, lng: 127.027 },
+    { id: 'yongsan', name: '용산·마포·서대문', stations: ['용산역','이태원역','홍대입구역','합정역','공덕역','신촌역'], lat: 37.530, lng: 126.960 },
+    { id: 'jongno', name: '종로·동대문', stations: ['종로3가역','광화문역','동대문역','동대문역사문화공원역','혜화역'], lat: 37.571, lng: 126.990 },
+    { id: 'seongsu', name: '성수·건대입구', stations: ['성수역','건대입구역','뚝섬역','왕십리역'], lat: 37.544, lng: 127.056 },
+    { id: 'gwanak', name: '관악·영등포', stations: ['서울대입구역','신림역','영등포역','여의도역','당산역'], lat: 37.481, lng: 126.952 },
+    { id: 'incheon', name: '인천', stations: ['인천역','동인천역','부평역','주안역','송도역','인천터미널역'], lat: 37.476, lng: 126.617 },
+    { id: 'gwangmyeong', name: '광명', stations: ['광명사거리역','철산역','광명역'], lat: 37.478, lng: 126.864 },
+  ];
+
+  const { data: stationRows } = await supabase
+    .from('station_places')
+    .select('station_id, station_lat, station_lng');
+
+  const coordMap = new Map(
+    (stationRows ?? []).map((r) => [r.station_id, { lat: Number(r.station_lat), lng: Number(r.station_lng) }]),
+  );
+
+  return c.json({
+    regions: regions.map((region, ri) => ({
+      id: region.id,
+      name: region.name,
+      stations: region.stations.map((name, si) => {
+        const coords = coordMap.get(name);
+        return {
+          id: name,
+          lat: coords?.lat ?? region.lat + si * 0.003,
+          lng: coords?.lng ?? region.lng + si * 0.003,
+        };
+      }),
+    })),
+  });
+});
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 // POST /sessions — 모임 생성
@@ -218,9 +256,18 @@ app.post('/sessions/:id/finalize', requireToss, async (c) => {
   }
 });
 
-// GET /sessions/:id/progress — N/M명 stage1 응답 현황
+// GET /sessions/:id/progress — N/정원 응답 현황
+// 호스트도 완전한 참여자(취향 입력)이므로 인원 집계에 포함한다.
+// min(= 최대 인원/정원)도 함께 내려 프론트가 정원 대비 진행률을 표시한다.
 app.get('/sessions/:id/progress', requireAuth, async (c) => {
   const sessionId = c.req.param('id');
+
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('min_participants')
+    .eq('id', sessionId)
+    .single();
+
   const [{ count: total }, { count: responded }] = await Promise.all([
     supabase
       .from('participants')
@@ -232,7 +279,12 @@ app.get('/sessions/:id/progress', requireAuth, async (c) => {
       .eq('session_id', sessionId)
       .eq('stage', 1),
   ]);
-  return c.json({ responded: responded ?? 0, total: total ?? 0 });
+
+  return c.json({
+    responded: responded ?? 0,
+    total: total ?? 0,
+    min: session?.min_participants ?? 0,
+  });
 });
 
 // ── Participants ──────────────────────────────────────────────────────────────
@@ -288,9 +340,10 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     budgetMax?: number;
     categories?: string[];
     mood?: string;
+    sortPref?: string;
   }>();
 
-  const { drink, budgetMin, budgetMax, categories = [], mood } = body;
+  const { drink, budgetMin, budgetMax, categories = [], mood, sortPref } = body;
   if (!drink || budgetMax == null)
     return c.json({ code: 'BAD_REQUEST', message: 'drink과 budgetMax가 필요합니다' }, 400);
   if (!['drinker', 'ok', 'uncomfortable'].includes(drink))
@@ -300,10 +353,15 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     );
   if (mood && !['quiet', 'any'].includes(mood))
     return c.json({ code: 'BAD_REQUEST', message: 'mood는 quiet/any 중 하나여야 합니다' }, 400);
+  if (sortPref && !SORT_MODES.includes(sortPref as SortMode))
+    return c.json(
+      { code: 'BAD_REQUEST', message: 'sortPref는 review_count/rating/random 중 하나여야 합니다' },
+      400,
+    );
 
   const { data: session } = await supabase
     .from('sessions')
-    .select('status')
+    .select('status, min_participants')
     .eq('id', sessionId)
     .single();
 
@@ -328,11 +386,22 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     budget_max: budgetMax,
     categories,
     mood: (mood as 'quiet' | 'any' | undefined) ?? null,
+    sort_pref: (sortPref as SortMode | undefined) ?? null,
   });
 
   if (error?.code === '23505')
     return c.json({ code: 'ALREADY_VOTED', message: '이미 응답한 세션입니다' }, 409);
   if (error) return c.json({ code: 'DB_ERROR', message: error.message }, 500);
+
+  // 정원(min_participants = 최대 인원) 전원이 응답하면 자동 집계.
+  const { count } = await supabase
+    .from('votes')
+    .select('*', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('stage', 1);
+  if ((count ?? 0) >= (session.min_participants ?? 0)) {
+    await aggregate(sessionId);
+  }
 
   return c.json({ message: '응답이 완료됐습니다' }, 201);
 });
@@ -503,6 +572,8 @@ app.get('/sessions/:id/recommendations', requireParticipant, async (c) => {
       relaxed: r.relaxed,
       source: r.places?.source ?? null,
       name: live?.name ?? r.places?.name ?? null,
+      category: isGoogle ? (live?.category ?? r.places?.category ?? null) : (r.places?.category ?? null),
+      imageUrl: live?.imageUrl ?? null,
       rating: live?.rating ?? r.rating_at_agg,
       reviewCount: live?.userRatingCount ?? r.review_count_at_agg,
       priceLevel: live?.priceLevel ?? r.places?.price_level ?? null,
@@ -526,8 +597,10 @@ app.get('/sessions/:id/recommendations', requireParticipant, async (c) => {
 });
 
 // PATCH /sessions/:id/sort — 정렬 모드 변경
-app.patch('/sessions/:id/sort', requireParticipant, async (c) => {
+// 정렬 모드는 호스트만 지정한다(참여자가 서로 덮어쓰는 경쟁 상태 방지). requireToss + 생성자 확인.
+app.patch('/sessions/:id/sort', requireToss, async (c) => {
   const sessionId = c.req.param('id');
+  const userKey = c.get('userKey') as number;
   const body = await c.req.json<{ sortMode?: string }>();
 
   if (!body.sortMode || !SORT_MODES.includes(body.sortMode as SortMode)) {
@@ -540,11 +613,13 @@ app.patch('/sessions/:id/sort', requireParticipant, async (c) => {
 
   const { data: session } = await supabase
     .from('sessions')
-    .select('status, sort_seed')
+    .select('status, sort_seed, host_user_key')
     .eq('id', sessionId)
     .single();
 
   if (!session) return c.json({ code: 'NOT_FOUND', message: '세션을 찾을 수 없습니다' }, 404);
+  if (session.host_user_key !== userKey)
+    return c.json({ code: 'FORBIDDEN', message: '생성자만 정렬을 바꿀 수 있습니다' }, 403);
   if (session.status !== 'voting')
     return c.json(
       { code: 'INVALID_STATUS', message: '투표 단계에서만 정렬을 바꿀 수 있습니다' },

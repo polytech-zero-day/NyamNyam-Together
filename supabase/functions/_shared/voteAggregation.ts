@@ -1,5 +1,6 @@
 import type { AggregatedConstraints, MoodPref } from './domain/types.ts';
 import type { DrinkValue, MoodValue } from './database.types.ts';
+import type { SortMode } from './domain/sort.ts';
 
 export interface Stage1Vote {
   drink: DrinkValue;
@@ -7,6 +8,20 @@ export interface Stage1Vote {
   budget_max: number | null;
   categories: string[];
   mood: MoodValue | null;
+  sort_pref: SortMode | null;
+}
+
+// 참여자들이 stage1에서 고른 정렬 기준을 다수결로 집계. 동점/무응답이면 기본값(review_count).
+export function tallySortMode(votes: Stage1Vote[]): SortMode {
+  const counts: Record<SortMode, number> = { review_count: 0, rating: 0, random: 0 };
+  for (const v of votes) {
+    if (v.sort_pref) counts[v.sort_pref] += 1;
+  }
+  const ranked = (Object.keys(counts) as SortMode[]).sort((a, b) => counts[b] - counts[a]);
+  // 1등이 0표(아무도 안 고름)이거나 2등과 동점이면 기본값.
+  if (counts[ranked[0]] === 0) return 'review_count';
+  if (counts[ranked[0]] === counts[ranked[1]]) return 'review_count';
+  return ranked[0];
 }
 
 function percentile(sorted: number[], p: number, fallback: number): number {

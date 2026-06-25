@@ -1,0 +1,30 @@
+name: Deploy (Supabase Edge Function)
+
+# feat/edge-functions 푸시 시 api 함수 자동 배포 + 수동 실행도 지원.
+on:
+  push:
+    branches: [feat/edge-functions]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-edge
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: supabase functions deploy api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # verify_jwt=false 는 supabase/config.toml 에 있어 CLI 가 그대로 반영한다.
+      # 시크릿(GOOGLE_PLACES_API_KEY/JWT_SECRET/TOSS_MTLS_* 등)은 프로젝트에 이미 설정돼 있어 코드만 갱신된다.
+      - name: Deploy api function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy api --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}

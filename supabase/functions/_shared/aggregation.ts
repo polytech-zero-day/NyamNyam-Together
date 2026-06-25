@@ -1,6 +1,6 @@
 import { supabase } from './supabase.ts';
 import { recommend } from './recommend.ts';
-import { buildConstraintsFromVotes } from './voteAggregation.ts';
+import { buildConstraintsFromVotes, tallySortMode } from './voteAggregation.ts';
 import type { Stage1Vote } from './voteAggregation.ts';
 import type { Station } from './domain/types.ts';
 import type { DrinkValue, MoodValue } from './database.types.ts';
@@ -8,7 +8,7 @@ import type { DrinkValue, MoodValue } from './database.types.ts';
 async function getStage1Votes(sessionId: string): Promise<Stage1Vote[]> {
   const { data, error } = await supabase
     .from('votes')
-    .select('drink, budget_min, budget_max, categories, mood')
+    .select('drink, budget_min, budget_max, categories, mood, sort_pref')
     .eq('session_id', sessionId)
     .eq('stage', 1);
   if (error) throw error;
@@ -18,6 +18,7 @@ async function getStage1Votes(sessionId: string): Promise<Stage1Vote[]> {
     budget_max: row.budget_max,
     categories: Array.isArray(row.categories) ? (row.categories as string[]) : [],
     mood: row.mood as MoodValue | null,
+    sort_pref: (row.sort_pref as Stage1Vote['sort_pref']) ?? null,
   }));
 }
 
@@ -53,9 +54,11 @@ export async function aggregate(sessionId: string): Promise<void> {
 
     await recommend(sessionId, constraints, station);
 
+    // 정렬 기준은 참여자 다수결로 결정(동점/무응답 → review_count).
+    const sortMode = tallySortMode(votes);
     await supabase
       .from('sessions')
-      .update({ status: 'voting' })
+      .update({ status: 'voting', sort_mode: sortMode })
       .eq('id', sessionId)
       .eq('status', 'aggregating');
   } catch (err) {

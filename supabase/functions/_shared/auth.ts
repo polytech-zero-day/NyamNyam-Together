@@ -21,31 +21,35 @@ function extractToken(c: Context): string | null {
 export const requireAuth = async (c: Context, next: Next): Promise<Response | void> => {
   const token = extractToken(c);
   if (!token) return c.json({ code: 'UNAUTHORIZED', message: '인증이 필요합니다' }, 401);
+  let payload: TokenPayload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
-    c.set('userKey', payload.userKey);
-    c.set('authKind', payload.kind ?? 'toss');
-    await next();
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
   } catch {
     return c.json({ code: 'UNAUTHORIZED', message: '유효하지 않은 토큰입니다' }, 401);
   }
+  c.set('userKey', payload.userKey);
+  c.set('authKind', payload.kind ?? 'toss');
+  // next()는 try 밖에서 호출 — 다운스트림 핸들러 에러를 토큰 오류(401)로 가리지 않도록.
+  await next();
 };
 
 export const requireToss = async (c: Context, next: Next): Promise<Response | void> => {
   const token = extractToken(c);
   if (!token) return c.json({ code: 'UNAUTHORIZED', message: '인증이 필요합니다' }, 401);
+  let payload: TokenPayload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
-    const kind = payload.kind ?? 'toss';
-    if (kind !== 'toss') {
-      return c.json({ code: 'TOSS_REQUIRED', message: '토스 로그인이 필요한 작업입니다' }, 403);
-    }
-    c.set('userKey', payload.userKey);
-    c.set('authKind', 'toss');
-    await next();
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
   } catch {
     return c.json({ code: 'UNAUTHORIZED', message: '유효하지 않은 토큰입니다' }, 401);
   }
+  const kind = payload.kind ?? 'toss';
+  if (kind !== 'toss') {
+    return c.json({ code: 'TOSS_REQUIRED', message: '토스 로그인이 필요한 작업입니다' }, 403);
+  }
+  c.set('userKey', payload.userKey);
+  c.set('authKind', 'toss');
+  // next()는 try 밖에서 호출 — 다운스트림 핸들러 에러를 토큰 오류(401)로 가리지 않도록.
+  await next();
 };
 
 // 세션 멤버십 인가: 요청자가 :id 세션의 참여자인지 확인.
