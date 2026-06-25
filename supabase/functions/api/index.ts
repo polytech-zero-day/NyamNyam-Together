@@ -85,6 +85,44 @@ app.post('/auth/dev-login', async (c) => {
   return c.json({ token: signToken(userKey), userKey });
 });
 
+// ── Stations ─────────────────────────────────────────────────────────────────
+
+// GET /stations — 권역·역 목록 (세션 생성 화면 역 선택용 큐레이션 고정 목록)
+app.get('/stations', async (c) => {
+  const regions = [
+    { id: 'gangnam', name: '강남·서초·송파', stations: ['강남역','신논현역','양재역','교대역','서초역','잠실역','삼성역','선릉역','가락시장역'], lat: 37.497, lng: 127.027 },
+    { id: 'yongsan', name: '용산·마포·서대문', stations: ['용산역','이태원역','홍대입구역','합정역','공덕역','신촌역'], lat: 37.530, lng: 126.960 },
+    { id: 'jongno', name: '종로·동대문', stations: ['종로3가역','광화문역','동대문역','동대문역사문화공원역','혜화역'], lat: 37.571, lng: 126.990 },
+    { id: 'seongsu', name: '성수·건대입구', stations: ['성수역','건대입구역','뚝섬역','왕십리역'], lat: 37.544, lng: 127.056 },
+    { id: 'gwanak', name: '관악·영등포', stations: ['서울대입구역','신림역','영등포역','여의도역','당산역'], lat: 37.481, lng: 126.952 },
+    { id: 'incheon', name: '인천', stations: ['인천역','동인천역','부평역','주안역','송도역','인천터미널역'], lat: 37.476, lng: 126.617 },
+    { id: 'gwangmyeong', name: '광명', stations: ['광명사거리역','철산역','광명역'], lat: 37.478, lng: 126.864 },
+  ];
+
+  const { data: stationRows } = await supabase
+    .from('station_places')
+    .select('station_id, station_lat, station_lng');
+
+  const coordMap = new Map(
+    (stationRows ?? []).map((r) => [r.station_id, { lat: Number(r.station_lat), lng: Number(r.station_lng) }]),
+  );
+
+  return c.json({
+    regions: regions.map((region, ri) => ({
+      id: region.id,
+      name: region.name,
+      stations: region.stations.map((name, si) => {
+        const coords = coordMap.get(name);
+        return {
+          id: name,
+          lat: coords?.lat ?? region.lat + si * 0.003,
+          lng: coords?.lng ?? region.lng + si * 0.003,
+        };
+      }),
+    })),
+  });
+});
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 // POST /sessions — 모임 생성
@@ -503,6 +541,8 @@ app.get('/sessions/:id/recommendations', requireParticipant, async (c) => {
       relaxed: r.relaxed,
       source: r.places?.source ?? null,
       name: live?.name ?? r.places?.name ?? null,
+      category: r.places?.category ?? null,
+      imageUrl: null,
       rating: live?.rating ?? r.rating_at_agg,
       reviewCount: live?.userRatingCount ?? r.review_count_at_agg,
       priceLevel: live?.priceLevel ?? r.places?.price_level ?? null,
