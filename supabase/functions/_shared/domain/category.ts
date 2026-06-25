@@ -1,4 +1,6 @@
-export const MIN_CATEGORY_VOTES = 2;
+// 소규모 모임에선 취향이 1명씩 갈리기 쉬우므로, 1표 이상 받은 카테고리는 모두 반영한다.
+// (예: 분식·고기·아시안 각 1표 → 셋 다 채택)
+export const MIN_CATEGORY_VOTES = 1;
 
 const CATEGORY_TYPE_MAP: Record<string, string[]> = {
   한식: ['korean_restaurant'],

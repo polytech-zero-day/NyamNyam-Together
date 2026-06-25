@@ -140,7 +140,11 @@ function toCandidate(p: GooglePlace, station: Station, placeId: string | null): 
   };
 }
 
-async function nearbySearch(station: Station, radiusM: number): Promise<GooglePlace[]> {
+async function nearbySearch(
+  station: Station,
+  radiusM: number,
+  includedTypes: string[] = [],
+): Promise<GooglePlace[]> {
   const res = await fetch(`${PLACES_BASE}/places:searchNearby`, {
     method: 'POST',
     headers: {
@@ -149,7 +153,8 @@ async function nearbySearch(station: Station, radiusM: number): Promise<GooglePl
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      includedPrimaryTypes: ['restaurant'],
+      // 채택된 음식 카테고리의 구글 type으로 검색을 좁힌다. 없으면 전체 음식점.
+      includedPrimaryTypes: includedTypes.length > 0 ? includedTypes : ['restaurant'],
       maxResultCount: NEARBY_MAX_RESULTS,
       rankPreference: 'POPULARITY',
       languageCode: 'ko',
@@ -181,8 +186,9 @@ export async function discoverAndFetch(
   station: Station,
   radiusM: number = DEFAULT_RADIUS_M,
   recordDiscovery = true,
+  includedTypes: string[] = [],
 ): Promise<Candidate[]> {
-  const places = await nearbySearch(station, radiusM);
+  const places = await nearbySearch(station, radiusM, includedTypes);
 
   const live = places
     .filter((p) => p.businessStatus !== 'CLOSED_PERMANENTLY')
