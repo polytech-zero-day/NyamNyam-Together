@@ -28,7 +28,7 @@ supabase/
       ├─ voteAggregation.ts     # stage1 표 → AggregatedConstraints + tallySortMode
       ├─ recommend.ts           # 후보 발굴(구글+등록) → 파이프라인 → recommendations
       ├─ finalVote.ts           # stage2 최종 집계(winner/동점)
-      └─ domain/                # 순수 함수(placeType·budget·category·mood·sort·longevity·pipeline) — 단위테스트 대상
+      └─ domain/                # 순수 함수(placeType·budget·category·mood·sort·longevity·geo·pipeline·types) — 단위테스트 대상
 ```
 
 ## 상태 흐름

@@ -47,6 +47,8 @@ supabase/
          ├─ mood.ts                 # 분위기 점수(quiet일 때 시끄러운 업종 감점/조용한 가점)
          ├─ sort.ts                 # 정렬(리뷰수/평점/랜덤)
          ├─ longevity.ts            # 등록 식당 업력 가점
+         ├─ geo.ts                  # haversine 거리 계산
+         ├─ types.ts                # 도메인 공용 타입(Constraints·Candidate 등)
          └─ pipeline.ts             # 필터 → 점수 → 상위 10 통합
 ```
 
