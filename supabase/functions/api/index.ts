@@ -566,8 +566,10 @@ app.get('/sessions/:id/recommendations', requireParticipant, async (c) => {
 });
 
 // PATCH /sessions/:id/sort — 정렬 모드 변경
-app.patch('/sessions/:id/sort', requireParticipant, async (c) => {
+// 정렬 모드는 호스트만 지정한다(참여자가 서로 덮어쓰는 경쟁 상태 방지). requireToss + 생성자 확인.
+app.patch('/sessions/:id/sort', requireToss, async (c) => {
   const sessionId = c.req.param('id');
+  const userKey = c.get('userKey') as number;
   const body = await c.req.json<{ sortMode?: string }>();
 
   if (!body.sortMode || !SORT_MODES.includes(body.sortMode as SortMode)) {
@@ -580,11 +582,13 @@ app.patch('/sessions/:id/sort', requireParticipant, async (c) => {
 
   const { data: session } = await supabase
     .from('sessions')
-    .select('status, sort_seed')
+    .select('status, sort_seed, host_user_key')
     .eq('id', sessionId)
     .single();
 
   if (!session) return c.json({ code: 'NOT_FOUND', message: '세션을 찾을 수 없습니다' }, 404);
+  if (session.host_user_key !== userKey)
+    return c.json({ code: 'FORBIDDEN', message: '생성자만 정렬을 바꿀 수 있습니다' }, 403);
   if (session.status !== 'voting')
     return c.json(
       { code: 'INVALID_STATUS', message: '투표 단계에서만 정렬을 바꿀 수 있습니다' },
