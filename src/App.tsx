@@ -61,10 +61,13 @@ const REC_SCREENS = new Set([
 //   → sort-select → vote-candidates(=Vote) → second-vote-waiting → vote-counting
 //   → final-result
 function ScreenRouter() {
-  const { screen, goto, sort, setSort, setVoted, sessionId } = useApp();
+  const { screen, goto, sort, setSort, setVoted, sessionId, role } = useApp();
+  const isHost = role === "host";
 
   // 추천 후보 조회(집계 전이면 NOT_READY 폴링). REC 화면에서만 활성.
-  const recsQuery = useRecommendations(sessionId, SORT_TO_BACKEND[sort], {
+  // 정렬은 호스트만 지정 → 호스트는 자기 선택을 ?sort로 보내고, 참여자는 미전송해
+  // 세션의 sort_mode(호스트가 정한 값)를 그대로 따른다.
+  const recsQuery = useRecommendations(sessionId, isHost ? SORT_TO_BACKEND[sort] : undefined, {
     enabled: sessionId != null && REC_SCREENS.has(screen),
   });
   const recsData = recsQuery.data;
@@ -104,11 +107,13 @@ function ScreenRouter() {
   }, [screen, ready, goto]);
 
   // F-10: 추천이 준비되면 로딩(finding)에서 자동 전환. 완화 발생 시 공지(relaxed) 경유.
+  // 정렬 지정은 호스트만 → 호스트는 sort-select 경유, 참여자는 바로 후보(vote-candidates).
   useEffect(() => {
     if (screen === "finding" && ready) {
-      goto(relaxed ? "relaxed" : "sort-select");
+      if (relaxed) goto("relaxed");
+      else goto(isHost ? "sort-select" : "vote-candidates");
     }
-  }, [screen, ready, relaxed, goto]);
+  }, [screen, ready, relaxed, isHost, goto]);
 
   return (
     <div className="screen-body">
@@ -137,7 +142,7 @@ function ScreenRouter() {
       {screen === "finding" && <LoadingScreen />}
       {/* F-11 조건완화 공지(34). "추천 결과 보기" → 정렬 기준 선택(35). */}
       {screen === "relaxed" && (
-        <RelaxedScreen onConfirm={() => goto("sort-select")} />
+        <RelaxedScreen onConfirm={() => goto(isHost ? "sort-select" : "vote-candidates")} />
       )}
       {screen === "sort-select" && (
         <SortSelectScreen

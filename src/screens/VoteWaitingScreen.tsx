@@ -20,10 +20,11 @@ export function VoteWaitingScreen() {
     if (close.isPending) return;
     try {
       await close.mutateAsync(); // collecting → aggregating(추천 작성)
+      // 호스트는 집계 대기(finding) 후 정렬을 지정(sort-select)하고 후보 투표로 이어진다.
+      goto("finding");
     } catch (err) {
       console.error("투표 종료 실패:", err);
     }
-    goto("vote-info-closed");
   }
 
   return (
