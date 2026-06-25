@@ -31,14 +31,103 @@ export function ToastHost() {
     };
   }, []);
 
+  // error 는 중앙 경고 모달(백드롭으로 하단 CTA 오탭 차단), info 는 상단 토스트.
+  const dismissMs = toast?.type === "error" ? 4000 : AUTO_DISMISS_MS;
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), AUTO_DISMISS_MS);
+    const timer = setTimeout(() => setToast(null), dismissMs);
     return () => clearTimeout(timer);
-  }, [toast]);
+  }, [toast, dismissMs]);
 
   if (!toast) return null;
 
+  // ── error: 화면 중앙 경고 모달 ──────────────────────────────────────────────
+  if (toast.type === "error") {
+    return (
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-live="assertive"
+        onClick={() => setToast(null)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "0 32px",
+          zIndex: 1000,
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: "100%",
+            maxWidth: 320,
+            background: "#fff",
+            borderRadius: 20,
+            padding: "28px 24px 20px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 14,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: "50%",
+              background: "#FFECEC",
+              color: "#E53935",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 28,
+              fontWeight: 700,
+            }}
+          >
+            !
+          </div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 15,
+              lineHeight: 1.5,
+              color: "#191F28",
+              textAlign: "center",
+              wordBreak: "keep-all",
+            }}
+          >
+            {toast.message}
+          </p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            style={{
+              marginTop: 6,
+              width: "100%",
+              border: "none",
+              borderRadius: 12,
+              padding: "13px 0",
+              background: "#F2F4F6",
+              color: "#4E5968",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            확인
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── info: 상단 토스트(하단 CTA와 겹치지 않게) ──────────────────────────────
   return (
     <div
       role="status"
@@ -47,7 +136,7 @@ export function ToastHost() {
         position: "fixed",
         left: 0,
         right: 0,
-        bottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
+        top: "calc(16px + env(safe-area-inset-top, 0px))",
         display: "flex",
         justifyContent: "center",
         padding: "0 20px",
@@ -58,8 +147,7 @@ export function ToastHost() {
       <div
         style={{
           maxWidth: "100%",
-          background:
-            toast.type === "error" ? "rgba(229,57,53,0.95)" : "rgba(25,31,40,0.92)",
+          background: "rgba(25,31,40,0.92)",
           color: "#fff",
           padding: "12px 16px",
           borderRadius: 12,

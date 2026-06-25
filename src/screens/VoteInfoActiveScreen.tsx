@@ -47,6 +47,8 @@ export function VoteInfoActiveScreen() {
 
   const respondedCount = progress.data?.responded ?? 0;
   const totalMembers = progress.data?.total ?? meeting.minMembers ?? 3;
+  // '최소 인원'은 모임 설정값(min_participants)을 표시한다 — 현재 참여 인원(totalMembers)과 별개.
+  const minMembers = session.data?.min_participants ?? meeting.minMembers ?? totalMembers;
 
   async function handleForceClose() {
     if (close.isPending) return;
@@ -117,7 +119,7 @@ export function VoteInfoActiveScreen() {
           }
           right={
             <ListHeader.RightText typography="t6">
-              {`${totalMembers}명`}
+              {`${minMembers}명`}
             </ListHeader.RightText>
           }
         />
