@@ -142,7 +142,7 @@ function RestaurantCard({
         cursor: "pointer",
       }}
     >
-      {/* TODO(backend): imageUrl 은 구글 Place Details 라이브 조회값으로 교체(에셋은 목업 placeholder). */}
+      {/* imageUrl: 백엔드가 구글 라이브 사진 URL을 주면 그대로, 없으면 adapters 에서 placeholder 폴백. */}
       <Asset.Image
         src={restaurant.imageUrl}
         frameShape={{ width: 320, height: 200, radius: 20 }}

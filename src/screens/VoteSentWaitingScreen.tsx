@@ -2,11 +2,10 @@ import { colors } from "@toss/tds-colors";
 import { Asset, BottomCTA, Text } from "@toss/tds-mobile";
 import checkFillIcon from "../assets/check-fill-circle.svg";
 
-// F-14 응답 진행률 화면 — 참여자 본인의 취향은 보냈고, 다른 참여자들의 응답을 기다리는 대기 상태.
-// "확인했어요"는 앱을 닫지 않고 대기를 유지하는 의도(B안). 백엔드 연동 시:
-//   · 전원 완료 신호가 오면 자동으로 AllSettledScreen 으로 전환
-//   · 그 전엔 이 화면에 머물면서 votedCount 만 폴링/푸시로 업데이트
-// 지금은 백엔드 미연결이라 데모용으로 onConfirm 호출(다음 화면 진행)만 지원.
+// F-14 응답 진행률 화면 — 참여자 본인의 취향은 보냈고, 다른 참여자/호스트의 종료를 기다리는 대기 상태.
+// 게이팅: 집계가 끝나(status=voting, 추천 준비 완료) App 라우터가 자동으로 다음 화면으로 넘긴다.
+//   · 그 전엔 이 화면에 머물며 votedCount(N/M)만 폴링으로 갱신 — 탭으로 건너뛸 수 없다.
+//   · onConfirm 을 넘기면 명시적 진행 버튼을 노출(특수 흐름용). 참여자 대기에선 미사용.
 interface Props {
   votedCount?: number;
   totalCount?: number;
@@ -60,18 +59,20 @@ export function VoteSentWaitingScreen({
         >
           {`투표를 완료한 인원 수 ( ${votedCount} / ${totalCount} )`}
         </Text>
+        <Text
+          typography="t6"
+          color={colors.grey400}
+          style={{ marginTop: 12, textAlign: "center" }}
+        >
+          모두 보내면 자동으로 추천을 찾아드려요
+        </Text>
       </div>
 
-      <BottomCTA.Single
-        onClick={() => {
-          // TODO(backend): 정상 흐름에선 이 버튼 안 누르고도 전원 완료 신호 받으면 자동 전환.
-          //   "확인했어요"는 사실상 대기 상태 명시적 확인 — 데모 편의로 다음 화면 진행에 활용.
-          if (onConfirm) onConfirm();
-          else console.log("[vote-sent-waiting] onConfirm 미연결");
-        }}
-      >
-        확인했어요
-      </BottomCTA.Single>
+      {/* 대기 화면에선 진행 버튼을 노출하지 않는다 — 집계 완료 시 라우터가 자동 전환.
+          onConfirm 이 명시적으로 전달된 특수 흐름에서만 버튼을 보여준다. */}
+      {onConfirm && (
+        <BottomCTA.Single onClick={onConfirm}>확인했어요</BottomCTA.Single>
+      )}
     </div>
   );
 }

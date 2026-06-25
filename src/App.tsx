@@ -13,7 +13,6 @@ import {
 } from "./api";
 import { openExternal, shareText } from "./lib/appActions";
 import { ToastHost } from "./lib/toast";
-import { NavBar } from "./components/NavBar";
 import { IntroScreen } from "./screens/IntroScreen";
 import { WelcomeScreen } from "./screens/WelcomeScreen";
 import { LoginConsentScreen } from "./screens/LoginConsentScreen";
@@ -37,7 +36,9 @@ import { VoteCountingScreen } from "./screens/VoteCountingScreen";
 import { FinalResultScreen } from "./screens/FinalResultScreen";
 
 // 추천 데이터(useRecommendations)를 폴링·구독하는 화면 집합. 그 외 화면에선 쿼리를 끈다.
+// q-done(취향 보낸 뒤 대기) 도 포함 — 집계 완료(status=voting) 신호를 폴링해 자동 전환하기 위함.
 const REC_SCREENS = new Set([
+  "q-done",
   "finding",
   "relaxed",
   "sort-select",
@@ -94,6 +95,14 @@ function ScreenRouter() {
   const setSortMut = useSetSort(sessionId ?? "");
   const stage2 = useStage2Vote(sessionId ?? "");
 
+  // 대기 게이팅: 취향을 보낸 참여자는 q-done 에 머물며, 집계가 끝나(status=voting,
+  // 추천 준비 완료) ready 가 될 때만 다음으로 넘어간다. 그 전엔 탭/타이머로 못 건너뛴다.
+  useEffect(() => {
+    if (screen === "q-done" && ready) {
+      goto("all-done");
+    }
+  }, [screen, ready, goto]);
+
   // F-10: 추천이 준비되면 로딩(finding)에서 자동 전환. 완화 발생 시 공지(relaxed) 경유.
   useEffect(() => {
     if (screen === "finding" && ready) {
@@ -118,11 +127,7 @@ function ScreenRouter() {
       {screen === "q-hub" && <PreferenceFormScreen />}
       {screen === "q-food" && <FoodSelectScreen />}
       {screen === "q-done" && (
-        <VoteSentWaitingScreen
-          votedCount={responded}
-          totalCount={total}
-          onConfirm={() => goto("all-done")}
-        />
+        <VoteSentWaitingScreen votedCount={responded} totalCount={total} />
       )}
       {screen === "all-done" && (
         <AllSettledScreen onComplete={() => goto("finding")} />
@@ -191,7 +196,6 @@ function ScreenRouter() {
 function App() {
   return (
     <AppProvider>
-      <NavBar />
       <ScreenRouter />
       <ToastHost />
     </AppProvider>

@@ -1,7 +1,9 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
   --frame-width: 375px;
-  --navbar-height: 56px;
+  /* 호스트(토스) 상단바가 로고·이름·닫기를 제공하므로 앱 자체 NavBar는 제거.
+     calc(100vh - var(--navbar-height)) 레이아웃이 전체 높이를 쓰도록 0으로 유지. */
+  --navbar-height: 0px;
   /* 토스 앱 SafeArea CSS 변수 폴백.
      실기기에선 native 가 적절한 값으로 덮어쓰고, 브라우저에선 0 으로 유지된다.
      (browser-shim 의 getSafeAreaInsets mock 와 한 세트로 동작 — JS/CSS 양쪽 모두 폴백.) */
