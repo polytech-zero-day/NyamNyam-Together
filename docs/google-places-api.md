@@ -1,7 +1,9 @@
 # 구글 Places API & 캐싱 (google-places-api.md)
 
-> 구글 Places API(New)는 **서버만** 호출(키 보호). `src/services/googlePlaces.ts` 구현 기준.
+> 구글 Places API(New)는 **서버만** 호출(키 보호). `supabase/functions/_shared/googlePlaces.ts` 구현 기준.
 > kakao-api.md를 대체한다. 카카오/웹서치 보완 로직은 전부 폐기.
+>
+> 현행 반영: ① `searchNearby`는 **채택 카테고리의 google type으로 `includedPrimaryTypes`를 좁혀** 호출(부족 시 전체 보충), `languageCode=ko`. ② Place Details에 **`photos` 포함**(사진 CDN URL 라이브, 저장 안 함) + 한글 업종 라벨. Atmosphere 필드는 여전히 금지.
 
 ## 사용 엔드포인트
 

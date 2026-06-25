@@ -1,79 +1,69 @@
 # 도메인 규칙 (domain-rules.md)
 
-> 추천 선정 로직의 단일 진실 공급원. `src/domain/`의 순수 함수로 구현·테스트한다.
-> ⚠️ **이 파이프라인은 "이미 집계된 제약"을 입력으로 받는다.** votes 원본 집계(예산 종합·다수결·표수)는 **B파트** 소유다.
+> 추천 선정 로직의 단일 진실 공급원. `supabase/functions/_shared/{domain,recommend,aggregation,voteAggregation}` 으로 구현·테스트한다.
+> 입력은 **참여자들의 stage1 원본 투표** — 집계부터 추천까지 모두 이 백엔드가 소유한다.
 
-## 0. 입력 계약 (B → 우리)
+## 0. 입력 — stage1 투표 (참여자·호스트 동일)
 
 ```ts
-// B파트 1단계 집계 결과 + 세션 위치
-interface AggregatedConstraints {
-  drink: { drinker: number; ok: number; uncomfortable: number }; // 분포(인원수)
-  budgetMin: number;          // 집계된 하한 (소프트)
-  budgetMax: number;          // 집계된 상한 (주력)
-  categories: { name: string; votes: number }[]; // 한글 분류 + 표수
-  moodDominant: 'quiet' | 'any' | null;
+interface Stage1Vote {
+  drink: 'drinker' | 'ok' | 'uncomfortable';
+  budget_min: number | null;
+  budget_max: number | null;
+  categories: string[];                 // 한글 음식 분류 (복수)
+  mood: 'quiet' | 'any' | null;
+  sort_pref: 'review_count' | 'rating' | 'random' | null; // 정렬 기준 투표
 }
-interface Station { id: string; lat: number; lng: number; }
 ```
 
-출력: `recommendations` 행(상위 3~10). 이후 stage2 투표·동점·상태전환은 B.
+## 1. 집계 (voteAggregation.ts → AggregatedConstraints)
 
-## 2단 파이프라인 (pipeline.ts)
+- **drink 분포**: {drinker, ok, uncomfortable} 카운트.
+- **budgetMax = 전원 max의 25퍼센타일**(빠듯한 쪽으로 보수적). **budgetMin = 전원 최저값.**
+- **categories**: {name, votes} 표수 집계.
+- **moodDominant**: quiet 비율 > 50% 면 `quiet`, 아니면 `any`.
+- **정렬(tallySortMode)**: sort_pref **다수결**로 1개 결정 → `session.sort_mode`. **동점·무응답 → `review_count`.**
 
-```
-입력: AggregatedConstraints + 후보 풀
-      후보 = [구글 Nearby 라이브 결과] ∪ [places의 owner/community 등록 식당]
-1단계 필터형:  술 분포 → 허용 장소타입 필터 / 예산 밴드 컷 / 역 반경
-2단계 선호형:  카테고리 2표 매칭 점수 / 평점 신호 / longevity
-출력: 상위 3~4곳 → recommendations 작성 (선정·정렬 전부 코드)
-```
+집계 트리거(aggregation.ts): ① 정원(`min_participants`=최대 인원, 호스트 포함) 전원 응답 → 자동, ② 마감 시각 경과.
 
-## 1. 술 수용도 → 장소타입 (placeType.ts)
+## 2. 후보 발굴 (recommend.ts + googlePlaces.ts) — ★ 카테고리로 검색을 좁힘
 
-drink 분포로 허용 집합 결정(인원수 기준):
+- **채택 카테고리(1표↑)의 google type을 `searchNearby`의 `includedPrimaryTypes`로** 전달 → 취향 음식 위주로 후보 수집(역 반경 500m, 인기순, 최대 20).
+- 좁혀서 **후보 < 6이면 전체 `restaurant` 검색으로 보충**(매칭 후보는 점수로 우선).
+- 등록 식당(owner/community)도 후보 합류.
+- 후보 풀 = [구글 라이브] ∪ [등록 식당].
 
-| 조합 | 허용 장소타입 |
+## 3. 술 → 업종 필터 (placeType.ts) — 하드 컷
+
+| 술 분포 | 허용 place_type |
 |---|---|
-| uncomfortable ≥ 1 | general 위주 |
-| drinker만 (ok·uncomfortable=0) | drink_required + compatible + general |
+| uncomfortable ≥ 1 | **general만** |
+| drinker > 0, ok = 0 | drink_required + compatible + general |
 | 그 외(ok 포함, uncomfortable=0) | compatible + general |
 
-**google `types`/`primaryType` → place_type (enum 매핑):**
-- drink_required: `bar`, `pub`, `wine_bar`, `night_club`
-- compatible: `barbecue_restaurant`, `brewery`, `bar_and_grill` (한식 고깃집/포차는 보강 룩업)
-- general: 그 외 `*_restaurant`, `cafe`, `bakery`, `coffee_shop`, `restaurant`
+**google types → place_type:** drink_required = `bar`/`pub`/`wine_bar`/`night_club` · compatible = `barbecue_restaurant`/`brewery`/`bar_and_grill` · general = 그 외.
 
-> 등록 식당은 등록 분류로 place_type 직접 지정. 매핑 테이블은 사람이 검수.
+## 4. 예산 (budget.ts) — max 주력 하드, min 소프트
 
-## 2. 예산 (budget.ts) — 범위 입력, max 주력·min 소프트
-
-- 입력 `budgetMin~budgetMax`(집계값). 구글은 **priceLevel(1~4)** 만 → 밴드로 환산:
-
-| 금액(원) | priceLevel |
+| 금액(원) | priceLevel band |
 |---|---|
 | < 12,000 | 1 |
 | < 25,000 | 2 |
 | < 50,000 | 3 |
 | ≥ 50,000 | 4 |
 
-- **max → 허용 상한(주력 필터)**, P25 완충으로 0개 위험 방지.
-- **min → 하한(소프트)**: 하드 필터 아님. min 밴드 미만은 정렬에서 약하게 후순위(감점). 0개 위험 시 가장 먼저 푼다.
-- 통과 조건: `priceLevel ∈ [bandOf(min)…bandOf(max)]`, 단 하한은 소프트.
-- **priceLevel null → 예산 필터 미적용(통과).**
-- (선택) `priceRange`(원 단위, 동일 Enterprise)는 **한국 커버리지 확인 후** 정밀화. 미도입 시 밴드 기준.
-- 등록 식당은 점주 신고 price_level 사용.
+- **max → 상한 하드 필터**: `priceLevel ≤ bandOf(budgetMax)`. **priceLevel null이면 통과**(구글이 가격 미제공 케이스 다수).
+- **min → 소프트 페널티**: priceLevel이 bandOf(budgetMin)보다 낮으면 점수 **−5**(필터 아님).
 
-## 3. 음식 카테고리 (category.ts) — ★ 2표 임계는 우리 소유
+## 5. 음식 카테고리 (category.ts) — 1표 채택 + 매칭 가점
 
-- B가 넘긴 `categories(name, votes)`에서 **2표 이상만 채택**(합집합 폭발 방지). 임계 판단은 추천 로직(우리).
-- 채택 카테고리와 식당 google `types`가 겹칠수록 높은 매칭 점수. **필터 아님(정렬용).**
+- **1표 이상 받은 카테고리 모두 채택**(`MIN_CATEGORY_VOTES = 1`). 소규모 모임에서 취향이 갈려도 전부 반영. (아무도 안 골랐으면 빈 배열.)
+- 채택 카테고리와 식당 google `types`가 겹치면 **+10점/카테고리**(`scoreByCategoryMatch`). 검색 좁힘(2장) + 이 가점의 이중 반영.
+- 채택 카테고리의 google type은 **검색(`includedPrimaryTypes`)에도** 쓰인다.
 
 **한글 분류 ↔ google types:**
 
-> 정본 8개 = 프론트/기능정의서와 동일. 매핑은 범용성 넓게(없는 type은 매칭만 안 될 뿐 무해).
-
-| 한글 분류 | google types (매칭/includedPrimaryTypes) |
+| 한글 | google types |
 |---|---|
 | 한식 | korean_restaurant |
 | 일식 | japanese_restaurant, sushi_restaurant, ramen_restaurant |
@@ -84,32 +74,35 @@ drink 분포로 허용 집합 결정(인원수 기준):
 | 고기·구이 | barbecue_restaurant, korean_restaurant |
 | 카페·브런치 | cafe, coffee_shop, bakery, brunch_restaurant, breakfast_restaurant, dessert_restaurant |
 
-## 4. 분위기 (mood.ts) — 현재 미사용
+> ⚠️ 카테고리별 **쿼터(균등 분배)는 없음** — 상위 N은 점수·리뷰순이라 인기 많은 한 음식이 칸을 다 차지할 수 있다.
 
-- Atmosphere 필드(goodForGroups 등)는 최고 티어라 안 받음 → 신뢰할 신호 없음.
-- **현재 가중치 0(사실상 미사용).** moodDominant는 받되 정렬에 영향 주지 않음(추후 등록 데이터로 보강 시 재도입).
+## 6. 분위기 (mood.ts) — types 기반 점수 (moodDominant=quiet 일 때만)
 
-## 5. 평점 신호 & 정렬 (sort.ts)
+구글에 소음 필드가 없어 **types/primaryType를 대리 신호**로 사용. quiet일 때만 동작(any/null → 0):
 
-- 신호: 구글 `userRatingCount`(리뷰 수) 우선 + `rating` 보조. 등록 식당은 null 가능.
-- **표본 보정**: 리뷰 적으면 rating 신뢰 하향(리뷰 3개 4.9 ≠ 신뢰). 기본 신호는 리뷰 수.
-- **정렬(sort_mode, 세션 공유):**
-  - `review_count`(기본): userRatingCount 내림차순. null/등록식당 후순위(감점 아님, 배지 구분).
-  - `rating`: rating 내림차순, **단 userRatingCount ≥ MIN(예: 10) 미만 신뢰 하향**.
-  - `random`: session.sort_seed 기반 결정적 셔플(새로고침해도 고정).
-- 정렬은 **표시 순서만** 바꾼다(후보·집계 불변). 기본값은 객관 신호(리뷰 수)로 — 정렬=약한 추천(앵커링)임을 인지.
+| 업종 | 점수 |
+|---|---|
+| 시끄러운(bar/pub/night_club/karaoke) | **−8** |
+| 경계(bar_and_grill/brewery/wine_bar) | **−3** |
+| 조용한(cafe/coffee_shop/tea_house/bakery/fine_dining/book_store) | **+3** |
+| 그 외 | 0 |
 
-## 6. longevity (longevity.ts)
+> 음식 매칭(+10)보다 작게 두어 음식 선호가 우선, 분위기는 동점·근소차에서만 순위 변경.
 
-- **출처는 등록(owner) 식당 `open_date`뿐.** 구글 `openingDate`는 미래 개업 전용이라 google 식당엔 적용 안 함.
-- 오래 운영 = 상권 생존의 방증 → 등록 식당에 **약한 가점**. open_date 없으면 0(감점 아님).
+## 7. 점수 합산 & 정렬
 
-## 7. 후보 0개 완화 (pipeline.ts)
+- **점수**(scoreCandidate) = 카테고리 매칭(+10/개) + 업력(longevity) + 분위기(±) − 저가 페널티(−5). 동점 시 리뷰수 → 거리.
+- **상위 10곳 저장**(STORE_COUNT). 표시는 상위 3~4곳.
+- **표시 정렬(sort_mode, 다수결 결정)**: `review_count`(리뷰 많은 순, 기본) / `rating`(평점순, 표본 적으면 신뢰 하향) / `random`(sort_seed 기반 결정적 셔플 — 새로고침해도 고정, 균등 분배 아님).
 
-- 완화 순서: **예산(min 하한 먼저)** → 카테고리 → 반경(Nearby radius 확대 1회 재호출).
-- 술 제약은 끝까지 유지. relaxed=true → 화면 배너.
+## 8. longevity (longevity.ts)
+- 등록(owner) 식당 `open_date` 기반 **약한 가점**(연 +0.5, 상한). 구글 식당·없음은 0.
+
+## 9. 후보 0개 완화 (pipeline.ts)
+- 순서: **예산 완화 → 반경 확대(1km 재검색)**. 술 제약은 끝까지 유지. `relaxed=true` → 화면 배너.
+
+## 10. stage2 / finalize (finalVote.ts)
+- 후보 중 1곳 투표. **최다 득표가 winner**, 동점 시 호스트 `forceWinnerId`로 결정. `winner_recommendation_id` 저장 + `closed`.
 
 ## 단위 테스트 원칙
-- 입력→출력 결정적. 술 분포 경계, priceLevel 밴드 경계, min 소프트/max 필터, 2표 컷, 완화 순서, random 시드 재현성, 표본보정 경계, null 처리(priceLevel/rating/userRatingCount/open_date) 테스트 필수.
-
-> **범위 밖**: votes 원본 집계(예산 종합·다수결), 상태전환, stage2 동점 처리는 B파트. 이 문서에서 구현하지 않는다.
+입력→출력 결정적. 술 경계 / priceLevel 밴드 / 카테고리 채택·매칭 / 분위기 점수 / 정렬 다수결·동점 / random 시드 재현성 / null 처리(priceLevel·rating·open_date) 테스트.

@@ -19,24 +19,25 @@ places (식당 마스터: google/owner/community) ← 우리
 
 ---
 
-## 1. sessions — 모임  *(스키마 우리 / 상태전환 B)*
+## 1. sessions — 모임
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | uuid (PK) | 세션 ID |
-| host_user_key | bigint | 생성자 userKey (공통 인증에서 발급) |
+| host_user_key | bigint | 생성자 userKey (토스 로그인) |
 | title | text | 모임명 |
-| purpose | text | 목적 — MVP는 friend |
-| min_participants | int | 최소 인원 |
+| purpose | text | 목적(친구/연인/부모님/기타) |
+| min_participants | int | **정원(최대 인원, 호스트 포함)** — 전원 stage1 응답 시 자동 집계 |
 | station_id | text | 위치(역) 식별자 |
-| station_lat / station_lng | numeric | 역 좌표 (Nearby 호출용) |
-| deadline | timestamptz | 마감 시간 (마감 로직은 B) |
-| status | text | collecting / aggregating / voting / closed (전환은 B) |
-| **sort_mode** | text | 후보 정렬: review_count(기본)/rating/random — **추천 화면용(우리)** |
+| station_lat / station_lng | numeric | 역 좌표 (searchNearby 호출용) |
+| deadline | timestamptz | 마감 시간 — 경과 시 자동 집계 |
+| status | text | collecting / aggregating / voting / closed |
+| **sort_mode** | text | 후보 정렬: review_count(기본)/rating/random — **참여자 다수결로 결정** |
 | **sort_seed** | int | random 정렬 시드(집계 시 1회 고정) |
+| **winner_recommendation_id** | uuid | finalize 확정 우승 후보 (FK→recommendations, migration 0004) |
 | created_at | timestamptz | |
 
-> 상태 전환·마감 트리거는 B파트 RPC가 소유. 우리는 status='aggregating' 진입 시 recommend 서비스가 호출됨.
+> 상태 전환·마감·집계·확정 모두 이 백엔드(`api`)가 소유. **정원 전원 응답** 또는 **마감 경과** 시 `aggregate()`.
 
 ---
 
@@ -53,23 +54,24 @@ places (식당 마스터: google/owner/community) ← 우리
 
 ---
 
-## 3. votes — 투표  *(스키마 우리 / 집계 로직 B)*
+## 3. votes — 투표
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | uuid (PK) | |
 | session_id | uuid (FK) | |
 | user_key | bigint | |
-| stage | int | 1=제약 응답, 2=식당 👍 |
+| stage | int | 1=취향 응답, 2=식당 👍 |
 | drink | text | (stage1) drinker/ok/uncomfortable |
 | budget_min / budget_max | int | (stage1) 1인 예산 범위 |
 | categories | jsonb | (stage1) 한글 분류 다중선택 |
 | mood | text | (stage1) quiet/any |
+| **sort_pref** | text | (stage1) 정렬 기준 투표 review_count/rating/random (migration 0005) |
 | recommendation_id | uuid | (stage2) 투표 후보 (FK→recommendations) |
 | created_at | timestamptz | |
 
 - stage1: (session_id, user_key) UNIQUE. stage2도 1인 1표.
-- ⚠️ **votes 집계(예산 범위 종합·다수결·표수 계산)는 B파트가 수행**한다. 우리 도메인은 votes를 직접 읽어 집계하지 않고, **B가 산출한 제약 객체**를 입력으로 받는다(domain-rules.md 0).
+- 집계(`voteAggregation`)는 이 백엔드가 수행 — 예산 종합(P25)·카테고리 표수·moodDominant·**정렬 다수결**(`tallySortMode`).
 
 ---
 

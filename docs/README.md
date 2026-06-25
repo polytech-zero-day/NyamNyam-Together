@@ -1,36 +1,29 @@
-# 백엔드 문서 (docs/) — A·C 파트 (추천 서버)
+# 백엔드 문서 (docs/)
 
-> Claude Code는 작업 영역 문서를 먼저 읽고 구현한다. 전역 규칙은 루트 `CLAUDE.md`.
-> ⚠️ **소유 범위는 A(스키마+RLS) + C(구글 Places + 추천).** B파트(세션 로직·RPC·Realtime)·공통(인증·CORS)은 외부 소유 → 인터페이스로만 참조.
+> 냠냠투게더 백엔드(Supabase Edge Function `api`)의 설계 문서. 전역 규칙은 루트 `CLAUDE.md`.
+> 이 레포는 백엔드 **전체**(인증·세션·투표·집계·추천·확정)를 소유한다.
 
-| 파일 | 내용 | 언제 읽나 | 소유 |
-|---|---|---|---|
-| `db-schema.md` | 전체 테이블 설계 + RLS | DB·마이그레이션·쿼리 | 우리(A) |
-| `domain-rules.md` | 추천 파이프라인(입력=집계된 제약)·정렬·longevity | `src/domain/` | 우리(C) |
-| `google-places-api.md` | 구글 Places 호출·SKU·ToS 캐싱(place_id만) | `services/googlePlaces` | 우리(C) |
-| `api-spec.md` | 추천 조회·정렬·등록 + 외부 인터페이스 | `routes/` | 우리(C) |
-| `toss-login.md` | 토스 로그인 → userKey (변경 없음) | 인증(`services/tossLogin`) | 우리(잠정) |
+| 파일 | 내용 |
+|---|---|
+| `db-schema.md` | 테이블 6종 + RLS (sessions/participants/votes/recommendations/places/station_places) |
+| `domain-rules.md` | 추천 파이프라인(입력→집계→발굴→필터→점수→표시) + 정렬 다수결 |
+| `google-places-api.md` | 구글 Places(New) 호출·필드마스크·ToS(place_id만 저장) |
+| `api-spec.md` | `api` 함수 엔드포인트(auth/sessions/votes/recommendations/stations/places) |
+| `toss-login.md` | 토스 mTLS 로그인 → userKey → 자체 JWT |
+| `integration-contract.md` | 프론트↔백엔드 계약(요청/응답 DTO) |
+| `openapi.yaml` | OpenAPI 스펙 |
+| `privacy.html` / `terms.html` / `index.html` | 약관·개인정보 정적 페이지(GitHub Pages) |
 
-> 인증은 토스 로그인 그대로(변경 없음). 공통/B와의 소유 경계는 협의 예정 — 우리는 검증된 userKey를 소비.
-> `kakao-api.md`는 폐기되고 `google-places-api.md`로 대체.
-
-## 핸드오프 요약
+## 흐름 요약
 ```
-B → 우리:  AggregatedConstraints + station
-우리:       Nearby 라이브 → 파이프라인 → recommendations
-우리 → B:  recommendations 행
-트리거:    B 상태전환(collecting→aggregating)에서 우리 recommend 호출
+참여자/호스트 stage1(취향+정렬) → 정원 충족/마감 → aggregate
+  → 구글 Places(카테고리로 좁힌 검색) + 등록식당 → 파이프라인 → recommendations
+  → stage2 후보 투표 → finalize(winner)
 ```
 
-## 구현 순서 (우리 범위)
-1. DB 스키마 SQL (`supabase/migrations/`) — 전체 테이블 + RLS (restaurants→places 마이그레이션)
-2. supabase 클라이언트 + 타입 생성
-3. `src/domain/` 순수 함수 + 단위테스트 — placeType/budget/category/mood/sort/longevity/pipeline
-4. `services/googlePlaces`(place_id 캐시) → `services/recommend`(파이프라인 호출)
-5. `routes/` — recommend(조회·정렬), places(등록 스텁)
+## 단일 함수 구조
+- 라우트: `supabase/functions/api/index.ts` (Hono)
+- 서비스/도메인: `supabase/functions/_shared/*`
+- 마이그레이션: `supabase/migrations/*`
 
-## 선행 작업 (콘솔 담당과 공유)
-- GCP 프로젝트 + Places API(New) + 키(서버 IP 제한) + Enterprise 무료 한도(월 1,000) 모니터링
-- 프론트 "Powered by Google" 출처 표기
-- Supabase 프로젝트 + 키
-- (인증·CORS는 공통 담당, B파트와 트리거/제약 인터페이스 합의)
+배포: `supabase functions deploy api --project-ref <ref>`

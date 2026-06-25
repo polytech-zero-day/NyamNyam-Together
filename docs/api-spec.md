@@ -1,45 +1,49 @@
 # API 명세 (api-spec.md)
 
-> ⚠️ **이 문서의 소유 엔드포인트는 추천 조회·정렬, 식당 등록 뿐이다.**
-> 인증·세션·참여·투표 엔드포인트는 **공통/B파트** 소유 → 여기선 **인터페이스로만** 표기.
+> Supabase Edge Function `api`, basePath **`/api`**. 배포 URL: `https://<ref>.supabase.co/functions/v1/api`.
+> 인증: 자체 JWT(`Authorization: Bearer <token>`). 미들웨어 `requireAuth`(토스/익명) · `requireToss`(토스만) · `requireParticipant`(세션 멤버).
 
-## 우리 소유 엔드포인트
+## 인증
+- `POST /auth/anon` → `{ token }` — 참여자용 익명 JWT(음수 userKey).
+- `POST /auth/login` `{ authorizationCode, referrer }` → `{ token }` — 토스 mTLS 인가코드 교환 → userKey → JWT.
+- `POST /auth/dev-login` `{ userKey }` → `{ token, userKey }` — 개발용. `ENV=production`이면 404.
 
-### 추천
-- `GET /sessions/:id/recommendations` — 집계 결과 후보 3~4곳 조회. `?sort=` 미지정 시 세션 sort_mode 적용.
-  - status가 voting 이상일 때 유효. 아직이면 202(진행 중).
-  - 응답: 후보 배열(place 참조 + relaxed + voteCount) + relaxed 플래그.
-  - **표시용 이름·평점은 최종 후보만 라이브 조회**(구글 Place Details) 또는 집계 응답 재사용 후 서버가 합쳐 반환.
-  - 구글 데이터 포함 시 응답에 source 표기 → 프론트 "Powered by Google".
-- `PATCH /sessions/:id/sort` — 후보 정렬 모드 변경 `{ sortMode }`. **세션 공유**(개인별 아님). voting에서 허용.
+## 역(스테이션)
+- `GET /stations` → `{ regions: [{ id, name, stations:[{id,lat,lng}] }] }` — 큐레이션 권역·역 목록.
 
-### 식당 등록 (확장 — 프론트 화면 우선, 백엔드 스텁)
-- `POST /places` — 점주/시민 등록 `{ source(owner|community), stationId, name, lat, lng, category, priceLevel?, openDate? }` → `{ placeId }`. MVP는 first-party 저장 최소 스텁(검증·심사 추후).
-- `GET /places?stationId=` — 역의 등록 식당 목록.
+## 세션
+- `POST /sessions` (requireToss) `{ stationId, stationLat, stationLng, title, minParticipants, purpose, deadline }` → `{ sessionId, inviteLink }` (201). 생성자는 participants에 자동 등록. *minParticipants = 정원(최대 인원, 호스트 포함).*
+- `GET /sessions/:id` (requireAuth) → 세션 정보 + `participantCount`. (읽기 시 마감 경과면 자동 집계 트리거)
+- `POST /sessions/:id/join` (requireAuth) → 참여(201). collecting 아니면 409.
+- `POST /sessions/:id/close` (requireToss, 생성자) → 즉시 집계 시작.
+- `POST /sessions/:id/finalize` (requireToss, 생성자) `{ forceWinnerId? }` → `{ isTied, winnerId, voteCount }`.
+- `GET /sessions/:id/progress` (requireAuth) → `{ responded, total, min }` — **호스트 포함** stage1 진행 인원 + 정원.
 
-## 내부 트리거 (B → 우리)
-- B의 상태전환(collecting→aggregating) 시 **recommend 서비스 호출**:
-  - 입력: `AggregatedConstraints`(예산 범위·drink 분포·categories+표수·moodDominant) + station 좌표.
-  - 처리: 구글 Nearby 라이브 → 파이프라인 → `recommendations` 작성.
-  - HTTP 내부 엔드포인트 또는 직접 함수 호출 — 연동 방식은 B와 합의.
+## 투표
+- `POST /sessions/:id/votes/stage1` (requireAuth) `{ drink, budgetMin?, budgetMax, categories?, mood?, sortPref? }` → 201.
+  - drink ∈ drinker/ok/uncomfortable, mood ∈ quiet/any, sortPref ∈ review_count/rating/random.
+  - **정원 전원 응답 시 자동 집계.**
+- `POST /sessions/:id/votes/stage2` (requireAuth) `{ restaurantId }` → 201. status=voting에서만.
 
-## 외부 인터페이스 (공통/B파트 소유 — 참조만)
-- 인증: 공통이 userKey 발급. 우리는 요청의 검증된 **userKey만 신뢰**한다. (구현 안 함)
-- `POST /sessions`, `GET /sessions/:id`, `POST /sessions/:id/close` — 세션·상태전환 (B)
-- `POST /sessions/:id/join` — 입장 (B/공통)
-- `POST /sessions/:id/votes/stage1`, `.../stage2` — 투표 수집·집계 (B)
-- `GET /sessions/:id/progress` — 진행률 (B)
+## 추천
+- `GET /sessions/:id/recommendations` (requireParticipant) → `{ sortMode, relaxed, attribution, leader, recommendations[] }`.
+  - collecting/aggregating이면 **202 NOT_READY**.
+  - 각 후보: recId·placeId·rank·placeType·name·**category·imageUrl(라이브)**·rating·reviewCount·priceLevel·distanceM·address·mapUrl·voteCount.
+  - 정렬은 `session.sort_mode`(참여자 다수결 결정). `?sort=`로 뷰 override 가능.
+- `PATCH /sessions/:id/sort` (requireToss, 생성자) `{ sortMode }` — 정렬 수동 변경(현재 흐름은 stage1 다수결 사용, 보조).
 
-## 공통 규칙 (우리 엔드포인트)
-- 모든 쓰기는 인증 userKey 기준(검증은 공통, 우리는 신뢰). 세션 무관 데이터 접근 차단(RLS).
-- 에러 응답 형식 통일(코드+메시지). 구글 호출 실패 graceful 처리.
-- 추천은 트리거 1회 생성 후 캐시(재호출 시 재계산 안 함).
-- **구글 콘텐츠는 응답 시점에만 라이브 사용**, DB 저장 안 함(place_id 제외).
+## 식당 등록
+- `POST /places` (requireAuth) `{ source(owner|community), stationId, name, lat, lng, category, priceLevel?, openDate?, placeType? }` → `{ placeId }`.
+- `GET /places?stationId=` (requireAuth) → 등록 식당 목록.
 
-## 상태 흐름 (소유 표기)
+## 공통
+- 에러: `{ code, message }` + HTTP status (400/401/403/404/409/500).
+- 구글 콘텐츠는 **응답 시점에만 라이브** 사용, DB 저장 안 함(place_id 제외). 출처 "Powered by Google".
+- 헬스체크: `GET /health` → `{ status: "ok" }`.
+
+## 상태 흐름
 ```
-collecting → (close/deadline, B) → aggregating → voting → closed   ← 상태전환=B
-                                    │
-                                    └─ [우리] recommend 서비스: Nearby + 파이프라인 → recommendations
-voting: [우리] recommendations 조회·정렬, [B] stage2 투표
+collecting → (정원 전원 응답 OR 마감 경과 OR 호스트 close) → aggregating
+  → [recommend: 카테고리로 좁힌 구글 검색 + 파이프라인 → recommendations] → voting
+  → stage2 투표 → finalize → closed(winner_recommendation_id)
 ```

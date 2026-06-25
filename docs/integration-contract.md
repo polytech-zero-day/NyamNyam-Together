@@ -1,5 +1,7 @@
 # B ↔ C 통합 인터페이스 계약 (integration-contract.md)
 
+> ⚠️ **이력 문서.** B(세션·투표·집계)와 C(추천)는 현재 **단일 백엔드(`api` 함수)로 통합 완료**되어 아래 B↔C 분리 계약은 런타임에 존재하지 않는다. 실제 동작은 `docs/domain-rules.md`·`docs/api-spec.md` 참고. (통합 이전 설계 기록용 보존.)
+
 > 통합 브랜치 `integ/backend-merge` 기준. **C(추천)는 이 계약의 "입력"만 신뢰**하고, 그 입력을 만드는
 > **B(투표 집계·상태전환)의 구현은 합류 대기**다(여기선 계약만 고정).
 > ⚠️ 기존 `feat/supabase-backend-setup`(K-yoon03)의 B는 **피벗 이전 스택**(카카오 + Edge Function +

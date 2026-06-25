@@ -1,19 +1,16 @@
 openapi: 3.0.3
 info:
-  title: 냠냠투게더 API — 통합 백엔드 (integ/backend-merge)
-  version: 0.3.0
+  title: 냠냠투게더 API — Supabase Edge Function (api)
+  version: 1.0.0
   description: |
-    냠냠투게더(앱인토스 미니앱) 백엔드 API.
+    냠냠투게더(앱인토스 미니앱) 백엔드 API — 단일 Edge Function `api`, basePath /api.
+    인증·세션·투표·집계·추천·확정을 모두 한 백엔드가 소유(B/C 분리 폐기).
 
-    **소유 경계 표기** (CLAUDE.md §0 / integration-contract.md):
-    - 🟢 **A·C(우리)**: 추천 조회·정렬, 식당 등록, 스키마·RLS, 구글 Places.
-    - 🟡 **B-브리지(잠정)**: 세션 상태전환·마감·votes 집계는 본래 B 소유.
-      B 담당 합류 전까지 통합 브랜치가 잠정 구현 — 합류 시 교체 대상.
-    - 🔵 **인증**: 토스 로그인 → JWT(host) / 익명 토큰(참여자). 인증 모델 B.
+    **인증**: host(그룹 생성·종료·확정)는 토스 로그인 → JWT, 참여자는 익명 토큰.
+    둘 다 `Authorization: Bearer <JWT>`.
 
-    **인증 모델**: host(그룹 생성·종료)는 토스 로그인 필수, 참여자는 익명 토큰으로
-    링크 입장(로그인 마찰 제거). 두 토큰 모두 `Authorization: Bearer <JWT>`.
-    상세는 `docs/api-spec.md`, `docs/integration-contract.md`.
+    ⚠️ 이 스펙은 일부 엔드포인트만 담을 수 있다. **현행 전체 명세는 `docs/api-spec.md`가 정본**이며,
+    추천 로직은 `docs/domain-rules.md` 참고.
 servers:
   - url: http://localhost:3000
     description: 로컬 개발
