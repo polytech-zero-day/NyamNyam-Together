@@ -257,20 +257,37 @@ app.post('/sessions/:id/finalize', requireToss, async (c) => {
 });
 
 // GET /sessions/:id/progress — N/M명 stage1 응답 현황
+// 호스트는 모임 생성자(취향 입력 안 함)이므로 진행 인원 집계에서 제외한다.
+// min(최소 인원)도 함께 내려 프론트가 목표 대비 진행률을 표시할 수 있게 한다.
 app.get('/sessions/:id/progress', requireAuth, async (c) => {
   const sessionId = c.req.param('id');
+
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('host_user_key, min_participants')
+    .eq('id', sessionId)
+    .single();
+  const hostUserKey = session?.host_user_key ?? 0;
+
   const [{ count: total }, { count: responded }] = await Promise.all([
     supabase
       .from('participants')
       .select('*', { count: 'exact', head: true })
-      .eq('session_id', sessionId),
+      .eq('session_id', sessionId)
+      .neq('user_key', hostUserKey),
     supabase
       .from('votes')
       .select('*', { count: 'exact', head: true })
       .eq('session_id', sessionId)
-      .eq('stage', 1),
+      .eq('stage', 1)
+      .neq('user_key', hostUserKey),
   ]);
-  return c.json({ responded: responded ?? 0, total: total ?? 0 });
+
+  return c.json({
+    responded: responded ?? 0,
+    total: total ?? 0,
+    min: session?.min_participants ?? 0,
+  });
 });
 
 // ── Participants ──────────────────────────────────────────────────────────────
