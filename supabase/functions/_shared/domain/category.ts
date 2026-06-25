@@ -41,9 +41,17 @@ export function getEligibleCategories(
   categories: { name: string; votes: number }[],
   minVotes: number = MIN_CATEGORY_VOTES,
 ): string[] {
-  return categories
-    .filter((c) => c.name.trim().length > 0 && c.votes >= minVotes)
-    .map((c) => c.name);
+  const named = categories.filter((c) => c.name.trim().length > 0);
+  const eligible = named.filter((c) => c.votes >= minVotes).map((c) => c.name);
+  if (eligible.length > 0) return eligible;
+
+  // 폴백: 임계(2표)에 도달한 카테고리가 하나도 없으면(소규모 모임에서 취향이 갈린 경우)
+  // 선호를 통째로 버리지 않고 최다 득표 카테고리 1개만 채택한다.
+  const top = named.reduce<{ name: string; votes: number } | null>(
+    (best, c) => (best === null || c.votes > best.votes ? c : best),
+    null,
+  );
+  return top ? [top.name] : [];
 }
 
 const CATEGORY_MATCH_POINTS = 10;

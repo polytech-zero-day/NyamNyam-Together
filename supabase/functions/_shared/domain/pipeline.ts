@@ -31,7 +31,7 @@ function scoreCandidate(
   return (
     scoreByCategoryMatch(effectiveTypes(c), eligibleCategories) +
     longevityScore(c.openDate, asOf) +
-    computeMoodScore(moodDominant) -
+    computeMoodScore(effectiveTypes(c), moodDominant) -
     budgetMinPenalty(c.priceLevel, budgetMin)
   );
 }
