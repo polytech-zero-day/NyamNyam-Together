@@ -31,7 +31,15 @@ export function PurposeSelectSheet({ onClose }: Props) {
 
   function handleNext() {
     if (!selected) return;
-    patchMeeting({ purpose: selected });
+    if (selected === "연인과의 데이트") {
+      // 연인 모임은 관례상 2명 고정 — 최소 인원도 함께 2로 설정.
+      patchMeeting({ purpose: selected, minMembers: 2 });
+    } else if (meeting.minMembers === 2) {
+      // 연인(2명) → 다른 목적으로 바꾸면 2는 3+ 목록에 없으니 초기화해 다시 고르게 한다.
+      patchMeeting({ purpose: selected, minMembers: undefined });
+    } else {
+      patchMeeting({ purpose: selected });
+    }
     onClose();
   }
 

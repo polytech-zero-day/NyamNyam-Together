@@ -18,14 +18,22 @@ const PRESETS = [
   { label: "일주일 뒤", daysFromToday: 7 },
 ] as const;
 
+// 로컬 타임존 기준 YYYY-MM-DD. toISOString()은 UTC라 KST(+9)에서 하루 당겨지는 버그가 있어 사용 금지.
+function localIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function todayIso(): string {
-  return new Date().toISOString().split("T")[0];
+  return localIso(new Date());
 }
 
 function addDays(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return localIso(d);
 }
 
 function formatKorean(isoDate: string): string {

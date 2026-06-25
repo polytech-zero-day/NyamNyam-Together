@@ -22,8 +22,11 @@ interface Props {
 
 export function MembersSelectSheet({ onClose }: Props) {
   const { patchMeeting, meeting } = useApp();
+  // 연인과의 데이트는 관례상 2명 고정 — 옵션을 2명만 노출.
+  const isCouple = meeting.purpose === "연인과의 데이트";
+  const options = isCouple ? [{ value: 2, label: "2명" }] : MEMBER_OPTIONS;
   const [selected, setSelected] = useState<number | null>(
-    meeting.minMembers ?? null,
+    meeting.minMembers ?? (isCouple ? 2 : null),
   );
 
   function handleNext() {
@@ -40,7 +43,7 @@ export function MembersSelectSheet({ onClose }: Props) {
       header={<BottomSheet.Header>최소 인원</BottomSheet.Header>}
       headerDescription={
         <BottomSheet.HeaderDescription>
-          인원은 최소 3명부터 가능해요
+          {isCouple ? "연인 모임은 2명이에요" : "인원은 최소 3명부터 가능해요"}
         </BottomSheet.HeaderDescription>
       }
       cta={
@@ -52,7 +55,7 @@ export function MembersSelectSheet({ onClose }: Props) {
       }
     >
       <List>
-        {MEMBER_OPTIONS.map(({ value, label }) => (
+        {options.map(({ value, label }) => (
           <ListRow
             key={value}
             contents={<ListRow.Texts type="1RowTypeA" top={label} />}

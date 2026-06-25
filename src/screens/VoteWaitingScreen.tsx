@@ -8,11 +8,13 @@ import checkFillIcon from "../assets/check-fill-circle.svg";
 // 좌측 "투표 강제종료" → host가 마감 시간 전에 강제 종료(F-09, POST /close → 집계 트리거).
 // 우측 "자세히보기" → 14번 상세. 진행률(N/M)은 GET /progress 폴링.
 export function VoteWaitingScreen() {
-  const { goto, sessionId } = useApp();
+  const { goto, sessionId, meeting } = useApp();
   const progress = useProgress(sessionId, { enabled: sessionId != null });
   const close = useCloseSession(sessionId ?? "");
   const respondedCount = progress.data?.responded ?? 0;
-  const totalCount = progress.data?.total ?? 0;
+  // 분모는 '목표 인원'(현재 참여 인원과 최소 인원 중 큰 값) — 호스트만 있을 때 1/N 처럼
+  // 최소 인원보다 작게 보여 혼란을 주지 않도록 한다.
+  const totalCount = Math.max(progress.data?.total ?? 0, meeting.minMembers ?? 0);
 
   async function handleForceClose() {
     if (close.isPending) return;
