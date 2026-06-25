@@ -18,3 +18,10 @@ export const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 10_0
 /** 토스 appLogin 실패 시 /auth/dev-login 으로 우회할지(개발 편의, 기본 허용). */
 export const ENABLE_DEV_LOGIN_FALLBACK =
   (import.meta.env.VITE_ENABLE_DEV_LOGIN ?? "true") === "true";
+
+/**
+ * 초대 링크 기반 URL. Toss WebView에서는 window.location.origin이 CloudFront CDN URL이라
+ * 서명 없이 공유하면 MissingKey 에러가 발생함. 미니앱의 공개 URL을 설정.
+ * 미설정 시 window.location.origin 폴백(로컬 개발용).
+ */
+export const INVITE_BASE_URL = (import.meta.env.VITE_INVITE_BASE_URL ?? "").replace(/\/+$/, "");

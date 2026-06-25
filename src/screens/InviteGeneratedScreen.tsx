@@ -9,13 +9,17 @@ import {
   useToast,
 } from "@toss/tds-mobile";
 import { useApp } from "../store";
+import { INVITE_BASE_URL } from "../config/env";
 import checkFillIcon from "../assets/check-fill-circle.svg";
 
 // F-03 모임 생성 완료. 호스트가 만든 모임의 초대 링크(?groupId=sessionId)를 보여주고 공유하도록 유도.
 function buildInviteLink(sessionId: string | null): string {
   if (!sessionId) return "";
   if (typeof window === "undefined") return `?groupId=${sessionId}`;
-  return `${window.location.origin}${window.location.pathname}?groupId=${sessionId}`;
+  // Toss WebView에서 window.location.origin이 CloudFront URL이라 직접 공유 불가.
+  // VITE_INVITE_BASE_URL에 미니앱 공개 URL을 설정해야 함.
+  const base = INVITE_BASE_URL || `${window.location.origin}${window.location.pathname}`;
+  return `${base}?groupId=${sessionId}`;
 }
 
 export function InviteGeneratedScreen() {
