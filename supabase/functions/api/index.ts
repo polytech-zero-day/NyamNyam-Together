@@ -45,6 +45,122 @@ app.get('/health', (c) => c.json({ status: 'ok' }));
 // DEBUG: 모든 경로 캐치 - 배포 후 URL 경로 확인용
 app.all('/__debug', (c) => c.json({ url: c.req.url, path: new URL(c.req.url).pathname, method: c.req.method }));
 
+// ── Join Landing Page ─────────────────────────────────────────────────────────
+// GET /join/:groupId — 초대 링크 랜딩 페이지
+// Safari 등 외부 브라우저에서 열릴 때 토스 앱 실행 유도 + 실패 시 코드 복사 안내
+app.get('/join/:groupId', (c) => {
+  const groupId = c.req.param('groupId');
+
+  // 토스 미니앱 URL (앱 내에서 직접 열릴 때 사용)
+  const miniAppUrl = `https://kopo-recommend-location.private-apps.tossmini.com/?groupId=${encodeURIComponent(groupId)}`;
+
+  // supertoss:// URL scheme으로 토스 앱 실행 시도
+  // 정확한 미니앱 딥링크 scheme은 Toss 문서 미공개 — 앱 실행 후 수동 입력 안내로 폴백
+  const tossSchemeUrl = `supertoss://`;
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>냠냠투게더 초대</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, 'Apple SD Gothic Neo', sans-serif;
+      background: #F5F5F5;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px;
+    }
+    .card {
+      background: #fff; border-radius: 20px;
+      padding: 32px 24px; width: 100%; max-width: 360px;
+      text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    h1 { font-size: 22px; font-weight: 700; color: #1A1A1A; margin-bottom: 8px; }
+    .sub { font-size: 14px; color: #888; margin-bottom: 28px; line-height: 1.5; }
+    .btn-primary {
+      display: block; width: 100%;
+      background: #F57820; color: #fff;
+      border: none; border-radius: 12px;
+      padding: 16px; font-size: 16px; font-weight: 700;
+      cursor: pointer; text-decoration: none;
+      margin-bottom: 12px;
+    }
+    .divider { font-size: 12px; color: #bbb; margin: 16px 0; }
+    .code-label { font-size: 12px; color: #888; margin-bottom: 8px; }
+    .code-box {
+      background: #F5F5F5; border-radius: 10px;
+      padding: 12px 16px; font-size: 13px;
+      color: #333; word-break: break-all;
+      display: flex; align-items: center;
+      justify-content: space-between; gap: 8px;
+      cursor: pointer;
+    }
+    .code-text { flex: 1; text-align: left; font-family: monospace; }
+    .copy-btn {
+      background: #F57820; color: #fff;
+      border: none; border-radius: 6px;
+      padding: 6px 12px; font-size: 12px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+    }
+    .toast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+      background: #1A1A1A; color: #fff;
+      padding: 10px 20px; border-radius: 20px; font-size: 13px;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🍽️</div>
+    <h1>냠냠투게더</h1>
+    <p class="sub">함께 먹는 한 끼, 함께 정하는 즐거움<br/>토스 앱에서 참여해주세요</p>
+
+    <a class="btn-primary" id="tossBtn" href="${tossSchemeUrl}">
+      토스 앱에서 열기
+    </a>
+
+    <div class="divider">토스 앱 실행 후 아래 링크를 입력해주세요</div>
+
+    <p class="code-label">초대 링크</p>
+    <div class="code-box" onclick="copyLink()">
+      <span class="code-text">${miniAppUrl}</span>
+      <button class="copy-btn" onclick="copyLink(); event.stopPropagation()">복사</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">링크가 복사됐어요</div>
+
+  <script>
+    function copyLink() {
+      const url = ${JSON.stringify(miniAppUrl)};
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => showToast());
+      } else {
+        const el = document.createElement('textarea');
+        el.value = url; document.body.appendChild(el);
+        el.select(); document.execCommand('copy');
+        document.body.removeChild(el);
+        showToast();
+      }
+    }
+    function showToast() {
+      const t = document.getElementById('toast');
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2000);
+    }
+  </script>
+</body>
+</html>`;
+
+  return c.html(html);
+});
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 // POST /auth/anon — 익명 참가자 토큰 발급 (링크로 입장하는 참여자용)
