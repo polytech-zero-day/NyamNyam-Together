@@ -1,0 +1,34 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nyamnyam-backend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "nyamnyam-backend-start",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 3000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "/Users/hanseongmin/WebstormProjects/NyamNyam-Together-Front/node_modules/.bin/vite",
+      "runtimeArgs": [
+        "/Users/hanseongmin/WebstormProjects/NyamNyam-Together-Front",
+        "--port",
+        "5199",
+        "--strictPort"
+      ],
+      "port": 5199
+    },
+    {
+      "name": "frontend-here",
+      "runtimeExecutable": "node_modules/.bin/vite",
+      "runtimeArgs": ["--port", "5174", "--strictPort"],
+      "port": 5174
+    }
+  ]
+}
