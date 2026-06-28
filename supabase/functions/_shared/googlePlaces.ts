@@ -43,7 +43,7 @@ const DETAILS_FIELD_MASK = [
   'priceLevel',
   'googleMapsUri',
   'nationalPhoneNumber',
-  'photos',
+  // 'photos' 제거 — GetPhotoMediaRequest 과금 방지. imageUrl은 null로 반환해 프론트 placeholder 표시.
 ].join(',');
 
 const PHOTO_MAX_WIDTH = 640;
@@ -267,8 +267,7 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
           signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
         });
         const p = await res.json() as GooglePlace;
-        const photoName = p.photos?.[0]?.name;
-        const imageUrl = photoName ? await fetchPhotoUri(photoName) : null;
+        const imageUrl = null; // 사진 API 비용 절감 — placeholder로 대체
         out.set(id, {
           ref: id,
           name: p.displayName?.text ?? null,
