@@ -3,7 +3,7 @@
 // ⚠️ 응답 봉투: { resultType: 'SUCCESS'|'FAIL', success: {...}|null, error: {errorCode, reason} }
 
 // Cloudflare Worker가 mTLS를 대신 처리. Supabase Edge Runtime은 클라이언트 인증서 전송 불가.
-const TOSS_BASE = 'https://toss-mtls-proxy.kkx7787.workers.dev/proxy';
+const TOSS_BASE = Deno.env.get('TOSS_PROXY_URL') ?? 'https://toss-mtls-proxy.kkx7787.workers.dev/proxy';
 const TOSS_TIMEOUT_MS = 10_000;
 
 interface TossEnvelope<T> {
