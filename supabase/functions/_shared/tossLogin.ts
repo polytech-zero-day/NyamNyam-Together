@@ -1,27 +1,10 @@
 // 토스 로그인 연동 — Deno Edge Function 버전
-// mTLS 필수. TOSS_MTLS_CERT / TOSS_MTLS_KEY를 Supabase Secrets에 저장.
+// mTLS는 Supabase Edge Runtime 미지원 → Cloudflare Worker(toss-mtls-proxy)가 대신 처리.
 // ⚠️ 응답 봉투: { resultType: 'SUCCESS'|'FAIL', success: {...}|null, error: {errorCode, reason} }
 
-const TOSS_BASE = 'https://apps-in-toss-api.toss.im';
+// Cloudflare Worker가 mTLS를 대신 처리. Supabase Edge Runtime은 클라이언트 인증서 전송 불가.
+const TOSS_BASE = 'https://toss-mtls-proxy.kkx7787.workers.dev/proxy';
 const TOSS_TIMEOUT_MS = 10_000;
-
-// mTLS 클라이언트: 첫 호출 시 초기화. 인증서 콘텐츠는 Supabase Secrets에서 환경변수로 주입.
-let _httpClient: Deno.HttpClient | null = null;
-
-function getMtlsClient(): Deno.HttpClient {
-  if (_httpClient) return _httpClient;
-  const certRaw = Deno.env.get('TOSS_MTLS_CERT');
-  const keyRaw = Deno.env.get('TOSS_MTLS_KEY');
-  if (!certRaw || !keyRaw) {
-    throw new Error('TOSS_MTLS_CERT and TOSS_MTLS_KEY must be set in Supabase Secrets');
-  }
-  // Supabase Secrets CLI로 설정 시 base64 인코딩으로 저장 → 멀티라인 문제 회피.
-  // base64 여부: '-----BEGIN' 미포함이면 base64로 간주.
-  const certChain = certRaw.includes('-----BEGIN') ? certRaw : atob(certRaw);
-  const privateKey = keyRaw.includes('-----BEGIN') ? keyRaw : atob(keyRaw);
-  _httpClient = Deno.createHttpClient({ certChain, privateKey });
-  return _httpClient;
-}
 
 interface TossEnvelope<T> {
   resultType: 'SUCCESS' | 'FAIL';
@@ -43,8 +26,6 @@ async function tossPost<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(TOSS_TIMEOUT_MS),
-    // @ts-ignore Deno HttpClient extension for mTLS
-    client: getMtlsClient(),
   });
   return unwrap(await res.json() as TossEnvelope<T>);
 }
@@ -53,8 +34,6 @@ async function tossGet<T>(path: string, accessToken: string): Promise<T> {
   const res = await fetch(`${TOSS_BASE}${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(TOSS_TIMEOUT_MS),
-    // @ts-ignore Deno HttpClient extension for mTLS
-    client: getMtlsClient(),
   });
   return unwrap(await res.json() as TossEnvelope<T>);
 }
