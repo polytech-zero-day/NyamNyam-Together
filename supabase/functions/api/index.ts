@@ -348,9 +348,9 @@ app.post('/sessions/:id/join', requireAuth, async (c) => {
     .single();
 
   if (!session) return c.json({ code: 'NOT_FOUND', message: '세션을 찾을 수 없습니다' }, 404);
-  if (session.status !== 'collecting')
+  if (!['collecting', 'voting'].includes(session.status))
     return c.json(
-      { code: 'INVALID_STATUS', message: '투표 수집 중인 세션에만 참여할 수 있습니다' },
+      { code: 'INVALID_STATUS', message: '진행 중인 세션에만 참여할 수 있습니다' },
       409,
     );
 
