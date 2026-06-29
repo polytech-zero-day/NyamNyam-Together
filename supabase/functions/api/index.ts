@@ -56,11 +56,21 @@ app.post('/__debug_aggregate/:sessionId', async (c) => {
     logs.push(`stationMeta: ${JSON.stringify(stMeta)}`);
     const { data: votes } = await supabase.from('votes').select('drink,budget_min,budget_max,categories,mood,sort_pref').eq('session_id', sessionId).eq('stage', 1);
     logs.push(`votes: ${JSON.stringify(votes)}`);
-    // 실제 aggregate 호출
-    const { aggregate } = await import('../_shared/aggregation.ts');
-    await aggregate(sessionId);
-    const { data: after } = await supabase.from('sessions').select('status').eq('id', sessionId).single();
-    logs.push(`status after aggregate: ${after?.status}`);
+    // recommend 직접 호출해서 에러 잡기
+    const { recommend } = await import('../_shared/recommend.ts');
+    const { buildConstraintsFromVotes, tallySortMode } = await import('../_shared/voteAggregation.ts');
+    const constraints = buildConstraintsFromVotes((votes ?? []).map((v: Record<string,unknown>) => ({
+      drink: v.drink as 'drinker'|'ok'|'uncomfortable' ?? 'ok',
+      budget_min: v.budget_min as number|null,
+      budget_max: v.budget_max as number ?? 30000,
+      categories: Array.isArray(v.categories) ? v.categories as string[] : [],
+      mood: v.mood as 'quiet'|'any'|null,
+      sort_pref: v.sort_pref as 'review_count'|'rating'|'random'|null,
+    })));
+    logs.push(`constraints: ${JSON.stringify(constraints)}`);
+    const station = { id: stMeta ? '철산역' : '', lat: stMeta?.station_lat ?? 0, lng: stMeta?.station_lng ?? 0 };
+    const result = await recommend(sessionId, constraints, station);
+    logs.push(`recommend result: ${result.recommended.length}건`);
     return c.json({ ok: true, logs });
   } catch (e) {
     const msg = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
