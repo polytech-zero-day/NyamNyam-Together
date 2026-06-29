@@ -42,6 +42,26 @@ app.use(
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
+// DEBUG: 집계 직접 실행 — 에러 응답으로 반환 (임시, 프로덕션에서는 404)
+app.post('/__debug_aggregate/:sessionId', async (c) => {
+  if (Deno.env.get('ENV') === 'production') return c.json({ code: 'NOT_FOUND' }, 404);
+  const sessionId = c.req.param('sessionId');
+  const logs: string[] = [];
+  try {
+    const { data: session } = await supabase.from('sessions').select('status,station_id,min_participants').eq('id', sessionId).single();
+    logs.push(`session: ${JSON.stringify(session)}`);
+    const { count } = await supabase.from('votes').select('*', { count: 'exact', head: true }).eq('session_id', sessionId).eq('stage', 1);
+    logs.push(`vote count: ${count}`);
+    const { data: stMeta } = await supabase.from('station_places').select('station_lat,station_lng').eq('station_id', session?.station_id ?? '').single();
+    logs.push(`stationMeta: ${JSON.stringify(stMeta)}`);
+    const { data: votes } = await supabase.from('votes').select('drink,budget_min,budget_max,categories,mood,sort_pref').eq('session_id', sessionId).eq('stage', 1);
+    logs.push(`votes: ${JSON.stringify(votes)}`);
+    return c.json({ ok: true, logs });
+  } catch (e) {
+    return c.json({ ok: false, error: e instanceof Error ? e.message : String(e), logs });
+  }
+});
+
 // DEBUG: 배포 후 URL 경로 확인용 — 프로덕션에서는 404
 app.all('/__debug', (c) => {
   if (Deno.env.get('ENV') === 'production') return c.json({ code: 'NOT_FOUND' }, 404);
