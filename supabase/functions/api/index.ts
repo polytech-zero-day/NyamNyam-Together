@@ -56,9 +56,15 @@ app.post('/__debug_aggregate/:sessionId', async (c) => {
     logs.push(`stationMeta: ${JSON.stringify(stMeta)}`);
     const { data: votes } = await supabase.from('votes').select('drink,budget_min,budget_max,categories,mood,sort_pref').eq('session_id', sessionId).eq('stage', 1);
     logs.push(`votes: ${JSON.stringify(votes)}`);
+    // 실제 aggregate 호출
+    const { aggregate } = await import('../_shared/aggregation.ts');
+    await aggregate(sessionId);
+    const { data: after } = await supabase.from('sessions').select('status').eq('id', sessionId).single();
+    logs.push(`status after aggregate: ${after?.status}`);
     return c.json({ ok: true, logs });
   } catch (e) {
-    return c.json({ ok: false, error: e instanceof Error ? e.message : String(e), logs });
+    const msg = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
+    return c.json({ ok: false, error: msg, logs });
   }
 });
 
