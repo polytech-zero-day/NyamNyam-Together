@@ -92,9 +92,13 @@ export async function recommend(
   let result = runPipeline([...googleCands, ...registered], constraints);
 
   if (result.recommended.length === 0 && result.relaxedConstraints.includes('radius')) {
-    const wider = await discoverAndFetch(station, RELAXED_RADIUS_M, false, includedTypes);
-    result = runPipeline([...wider, ...registered], constraints);
-    result.recommended = result.recommended.map((c) => ({ ...c, relaxed: true }));
+    try {
+      const wider = await discoverAndFetch(station, RELAXED_RADIUS_M, false, includedTypes);
+      result = runPipeline([...wider, ...registered], constraints);
+      result.recommended = result.recommended.map((c) => ({ ...c, relaxed: true }));
+    } catch (e) {
+      console.error('반경 완화 검색 실패 — 현재 후보 유지:', e);
+    }
   }
 
   await writeRecommendations(sessionId, result.recommended);
