@@ -74,7 +74,9 @@ app.post('/__debug_aggregate/:sessionId', async (c) => {
     return c.json({ ok: true, logs });
   } catch (e) {
     const msg = e instanceof Error ? `${e.message}\n${e.stack}` : String(e);
-    return c.json({ ok: false, error: msg, logs });
+    let errInfo: unknown;
+    try { errInfo = JSON.parse(JSON.stringify(e)); } catch { errInfo = msg; }
+    return c.json({ ok: false, error: errInfo, logs });
   }
 });
 
