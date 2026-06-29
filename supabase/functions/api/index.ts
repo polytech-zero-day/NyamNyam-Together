@@ -306,7 +306,7 @@ app.post('/sessions/:id/finalize', requireToss, async (c) => {
 // GET /sessions/:id/progress — N/정원 응답 현황
 // 호스트도 완전한 참여자(취향 입력)이므로 인원 집계에 포함한다.
 // min(= 최대 인원/정원)도 함께 내려 프론트가 정원 대비 진행률을 표시한다.
-app.get('/sessions/:id/progress', requireAuth, async (c) => {
+app.get('/sessions/:id/progress', requireParticipant, async (c) => {
   const sessionId = c.req.param('id');
 
   const { data: session } = await supabase
