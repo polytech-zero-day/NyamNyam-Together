@@ -68,7 +68,7 @@ app.post('/__debug_aggregate/:sessionId', async (c) => {
       sort_pref: v.sort_pref as 'review_count'|'rating'|'random'|null,
     })));
     logs.push(`constraints: ${JSON.stringify(constraints)}`);
-    const station = { id: stMeta ? '철산역' : '', lat: stMeta?.station_lat ?? 0, lng: stMeta?.station_lng ?? 0 };
+    const station = { id: stationId, lat: stMeta?.station_lat ?? 0, lng: stMeta?.station_lng ?? 0 };
     const result = await recommend(sessionId, constraints, station);
     logs.push(`recommend result: ${result.recommended.length}건`);
     return c.json({ ok: true, logs });
@@ -391,8 +391,8 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
   }>();
 
   const { drink, budgetMin, budgetMax, categories = [], mood, sortPref } = body;
-  if (!drink || budgetMax == null)
-    return c.json({ code: 'BAD_REQUEST', message: 'drink과 budgetMax가 필요합니다' }, 400);
+  if (!drink || budgetMax == null || budgetMax <= 0)
+    return c.json({ code: 'BAD_REQUEST', message: 'drink과 budgetMax(양수)가 필요합니다' }, 400);
   if (!['drinker', 'ok', 'uncomfortable'].includes(drink))
     return c.json(
       { code: 'BAD_REQUEST', message: 'drink은 drinker/ok/uncomfortable 중 하나여야 합니다' },
@@ -405,6 +405,8 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
       { code: 'BAD_REQUEST', message: 'sortPref는 review_count/rating/random 중 하나여야 합니다' },
       400,
     );
+
+  await checkDeadlineAndAggregate(sessionId);
 
   const { data: session } = await supabase
     .from('sessions')

@@ -20,7 +20,7 @@ export function tallySortMode(votes: Stage1Vote[]): SortMode {
   const ranked = (Object.keys(counts) as SortMode[]).sort((a, b) => counts[b] - counts[a]);
   // 1등이 0표(아무도 안 고름)이거나 2등과 동점이면 기본값.
   if (counts[ranked[0]] === 0) return 'review_count';
-  if (counts[ranked[0]] === counts[ranked[1]]) return 'review_count';
+  if (counts[ranked[0]] === (counts[ranked[1]] ?? 0)) return 'review_count';
   return ranked[0];
 }
 

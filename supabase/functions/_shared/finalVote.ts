@@ -55,6 +55,15 @@ export async function finalizeSession(
 
   let winnerId: string;
   if (forceWinnerId) {
+    // 세션 소속 recommendation인지 DB에서 먼저 검증
+    const { data: recCheck } = await supabase
+      .from('recommendations')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('id', forceWinnerId)
+      .single();
+    if (!recCheck)
+      throw new FinalizeError('forceWinnerId가 이 세션의 후보가 아닙니다', 400, 'INVALID_WINNER');
     if (!tiedIds.includes(forceWinnerId))
       throw new FinalizeError('forceWinnerId가 동점 후보에 없습니다', 400, 'INVALID_WINNER');
     winnerId = forceWinnerId;

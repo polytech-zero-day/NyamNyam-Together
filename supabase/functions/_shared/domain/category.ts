@@ -47,8 +47,7 @@ export function getEligibleCategories(
   const eligible = named.filter((c) => c.votes >= minVotes).map((c) => c.name);
   if (eligible.length > 0) return eligible;
 
-  // 폴백: 임계(2표)에 도달한 카테고리가 하나도 없으면(소규모 모임에서 취향이 갈린 경우)
-  // 선호를 통째로 버리지 않고 최다 득표 카테고리 1개만 채택한다.
+  // 폴백: 아무도 카테고리를 선택하지 않은 경우 — 최다 득표 카테고리 1개만 채택한다.
   const top = named.reduce<{ name: string; votes: number } | null>(
     (best, c) => (best === null || c.votes > best.votes ? c : best),
     null,
