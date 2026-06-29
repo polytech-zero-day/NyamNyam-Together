@@ -42,7 +42,7 @@ app.use(
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
-// DEBUG: 집계 직접 실행 — 에러 응답으로 반환 (임시, 프로덕션에서는 404)
+// DEBUG: 집계 직접 실행 — 임시 디버그 엔드포인트 (비프로덕션 전용)
 app.post('/__debug_aggregate/:sessionId', async (c) => {
   if (Deno.env.get('ENV') === 'production') return c.json({ code: 'NOT_FOUND' }, 404);
   const sessionId = c.req.param('sessionId');

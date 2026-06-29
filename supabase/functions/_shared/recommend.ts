@@ -65,7 +65,6 @@ export async function recommend(
     ...new Set(getEligibleCategories(constraints.categories).flatMap(googleTypesForCategory)),
   ];
 
-  console.log(`[recommend] sessionId=${sessionId} station=${station.id} includedTypes=${JSON.stringify(includedTypes)}`);
   const [gRes, rRes] = await Promise.allSettled([
     discoverAndFetch(station, undefined, true, includedTypes),
     fetchRegisteredCandidates(station),
@@ -90,7 +89,6 @@ export async function recommend(
     }
   }
 
-  console.log(`[recommend] googleCands=${googleCands.length} registered=${registered.length}`);
   let result = runPipeline([...googleCands, ...registered], constraints);
 
   if (result.recommended.length === 0 && result.relaxedConstraints.includes('radius')) {
@@ -103,7 +101,6 @@ export async function recommend(
     }
   }
 
-  console.log(`[recommend] result.recommended=${result.recommended.length} relaxed=${JSON.stringify(result.relaxedConstraints)}`);
   await writeRecommendations(sessionId, result.recommended);
   return result;
 }
