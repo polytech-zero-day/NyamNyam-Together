@@ -26,7 +26,9 @@ export function tallySortMode(votes: Stage1Vote[]): SortMode {
 
 function percentile(sorted: number[], p: number, fallback: number): number {
   if (sorted.length === 0) return fallback;
-  return sorted[Math.floor(sorted.length * p)];
+  // 인덱스가 배열 범위를 벗어나지 않도록 clamp
+  const idx = Math.min(Math.floor(sorted.length * p), sorted.length - 1);
+  return sorted[idx];
 }
 
 export function buildConstraintsFromVotes(votes: Stage1Vote[]): AggregatedConstraints {

@@ -42,8 +42,11 @@ app.use(
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
-// DEBUG: 모든 경로 캐치 - 배포 후 URL 경로 확인용
-app.all('/__debug', (c) => c.json({ url: c.req.url, path: new URL(c.req.url).pathname, method: c.req.method }));
+// DEBUG: 배포 후 URL 경로 확인용 — 프로덕션에서는 404
+app.all('/__debug', (c) => {
+  if (Deno.env.get('ENV') === 'production') return c.json({ code: 'NOT_FOUND' }, 404);
+  return c.json({ url: c.req.url, path: new URL(c.req.url).pathname, method: c.req.method });
+});
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -178,7 +181,13 @@ app.post('/sessions', requireToss, async (c) => {
     return c.json({ code: 'DB_ERROR', message: '세션 생성에 실패했습니다' }, 500);
   }
 
-  await supabase.from('participants').insert({ session_id: data.id, user_key: userKey });
+  const { error: pErr } = await supabase
+    .from('participants')
+    .insert({ session_id: data.id, user_key: userKey });
+  if (pErr) {
+    console.error('호스트 participants 삽입 실패:', pErr);
+    return c.json({ code: 'DB_ERROR', message: '세션 생성에 실패했습니다' }, 500);
+  }
   return c.json({ sessionId: data.id, inviteLink: `/sessions/${data.id}/join` }, 201);
 });
 
@@ -645,8 +654,8 @@ app.patch('/sessions/:id/sort', requireToss, async (c) => {
 const SOURCES: PlaceSource[] = ['owner', 'community'];
 const PLACE_TYPES: PlaceType[] = ['drink_required', 'compatible', 'general'];
 
-// POST /places — 점주/시민 식당 등록
-app.post('/places', requireAuth, async (c) => {
+// POST /places — 점주/시민 식당 등록 (토스 로그인 필수 — 익명 토큰 불가)
+app.post('/places', requireToss, async (c) => {
   const body = await c.req.json<{
     source?: string;
     stationId?: string;

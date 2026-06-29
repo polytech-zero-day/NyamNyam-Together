@@ -84,7 +84,9 @@ export function signToken(userKey: number): string {
 }
 
 export function signAnonToken(): { token: string; anonId: number } {
-  const anonId = -(Math.floor(Math.random() * 9_000_000_000_000) + 1);
+  const arr = new Uint32Array(2);
+  crypto.getRandomValues(arr);
+  const anonId = -(((arr[0] * 0x100000000 + arr[1]) % 9_000_000_000_000) + 1);
   const token = jwt.sign({ userKey: anonId, kind: 'anon' }, JWT_SECRET, {
     algorithm: 'HS256',
     expiresIn: '12h',

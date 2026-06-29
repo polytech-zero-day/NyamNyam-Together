@@ -168,6 +168,10 @@ async function nearbySearch(
     }),
     signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
   });
+  if (!res.ok) {
+    console.error(`구글 Nearby API 오류 ${res.status}:`, await res.text().catch(() => ''));
+    throw new Error(`구글 Places API 오류: ${res.status}`);
+  }
   const data = await res.json() as { places?: GooglePlace[] };
   return data.places ?? [];
 }

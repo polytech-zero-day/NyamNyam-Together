@@ -49,7 +49,9 @@ async function writeRecommendations(sessionId: string, ranked: RankedCandidate[]
       review_count_at_agg: c.reviewCountAtAgg,
       rating_at_agg: c.ratingAtAgg,
     }));
-  const { error } = await supabase.from('recommendations').insert(rows);
+  const { error } = await supabase
+    .from('recommendations')
+    .upsert(rows, { onConflict: 'session_id,place_id', ignoreDuplicates: true });
   if (error) throw error;
 }
 

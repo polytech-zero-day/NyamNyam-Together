@@ -4,6 +4,7 @@
 
 // Cloudflare Worker가 mTLS를 대신 처리. Supabase Edge Runtime은 클라이언트 인증서 전송 불가.
 const TOSS_BASE = Deno.env.get('TOSS_PROXY_URL') ?? 'https://toss-mtls-proxy.kkx7787.workers.dev/proxy';
+const PROXY_SECRET = Deno.env.get('PROXY_SECRET') ?? '';
 const TOSS_TIMEOUT_MS = 10_000;
 
 interface TossEnvelope<T> {
@@ -23,7 +24,7 @@ function unwrap<T>(data: TossEnvelope<T>): T {
 async function tossPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${TOSS_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Proxy-Secret': PROXY_SECRET },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(TOSS_TIMEOUT_MS),
   });
@@ -32,7 +33,7 @@ async function tossPost<T>(path: string, body: unknown): Promise<T> {
 
 async function tossGet<T>(path: string, accessToken: string): Promise<T> {
   const res = await fetch(`${TOSS_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}`, 'X-Proxy-Secret': PROXY_SECRET },
     signal: AbortSignal.timeout(TOSS_TIMEOUT_MS),
   });
   return unwrap(await res.json() as TossEnvelope<T>);

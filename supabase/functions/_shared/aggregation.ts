@@ -63,6 +63,8 @@ export async function aggregate(sessionId: string): Promise<void> {
       .eq('status', 'aggregating');
   } catch (err) {
     console.error(`aggregate 실패 (${sessionId}) — collecting으로 롤백:`, err);
+    // 부분 삽입된 추천 행 정리
+    await supabase.from('recommendations').delete().eq('session_id', sessionId);
     await supabase
       .from('sessions')
       .update({ status: 'collecting' })
