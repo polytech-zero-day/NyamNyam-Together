@@ -68,7 +68,7 @@ app.post('/__debug_aggregate/:sessionId', async (c) => {
       sort_pref: v.sort_pref as 'review_count'|'rating'|'random'|null,
     })));
     logs.push(`constraints: ${JSON.stringify(constraints)}`);
-    const station = { id: stationId, lat: stMeta?.station_lat ?? 0, lng: stMeta?.station_lng ?? 0 };
+    const station = { id: session?.station_id ?? '', lat: stMeta?.station_lat ?? 0, lng: stMeta?.station_lng ?? 0 };
     const result = await recommend(sessionId, constraints, station);
     logs.push(`recommend result: ${result.recommended.length}건`);
     return c.json({ ok: true, logs });
@@ -404,6 +404,12 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
       400,
     );
 
+  if (!(await isParticipant(sessionId, userKey)))
+    return c.json(
+      { code: 'NOT_PARTICIPANT', message: '세션에 참여한 사용자만 응답할 수 있습니다' },
+      403,
+    );
+
   await checkDeadlineAndAggregate(sessionId);
 
   const { data: session } = await supabase
@@ -417,11 +423,6 @@ app.post('/sessions/:id/votes/stage1', requireAuth, async (c) => {
     return c.json(
       { code: 'INVALID_STATUS', message: '투표 수집 중인 세션에만 응답할 수 있습니다' },
       409,
-    );
-  if (!(await isParticipant(sessionId, userKey)))
-    return c.json(
-      { code: 'NOT_PARTICIPANT', message: '세션에 참여한 사용자만 응답할 수 있습니다' },
-      403,
     );
 
   const { error } = await supabase.from('votes').insert({

@@ -49,9 +49,11 @@ export async function finalizeSession(sessionId: string): Promise<FinalizeResult
   // 동점 시 가장 마지막에 투표된 식당으로 자동 결정
   const winnerId = tiedIds.length === 1
     ? tiedIds[0]!
-    : tiedIds.sort((a, b) =>
-        (lastVotedAt.get(b) ?? '').localeCompare(lastVotedAt.get(a) ?? ''),
-      )[0]!;
+    : tiedIds.sort((a, b) => {
+        const ta = lastVotedAt.get(a) ?? '';
+        const tb = lastVotedAt.get(b) ?? '';
+        return tb > ta ? 1 : tb < ta ? -1 : 0;
+      })[0]!;
 
   const { error: updateErr } = await supabase
     .from('sessions')
