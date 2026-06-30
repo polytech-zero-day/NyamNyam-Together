@@ -1,8 +1,6 @@
 import { supabase } from './supabase.ts';
 
-export type FinalizeResult =
-  | { isTied: true; tiedIds: string[]; voteCount: number }
-  | { isTied: false; winnerId: string; voteCount: number };
+export type FinalizeResult = { isTied: false; winnerId: string; voteCount: number };
 
 export class FinalizeError extends Error {
   constructor(
@@ -14,10 +12,7 @@ export class FinalizeError extends Error {
   }
 }
 
-export async function finalizeSession(
-  sessionId: string,
-  forceWinnerId?: string,
-): Promise<FinalizeResult> {
+export async function finalizeSession(sessionId: string): Promise<FinalizeResult> {
   const { data: session } = await supabase
     .from('sessions')
     .select('status')
@@ -30,46 +25,33 @@ export async function finalizeSession(
 
   const { data: votes, error } = await supabase
     .from('votes')
-    .select('recommendation_id')
+    .select('recommendation_id, created_at')
     .eq('session_id', sessionId)
     .eq('stage', 2)
-    .not('recommendation_id', 'is', null);
+    .not('recommendation_id', 'is', null)
+    .order('created_at', { ascending: true });
 
   if (error) throw error;
   if (!votes?.length) throw new FinalizeError('아직 투표가 없습니다', 409, 'NO_VOTES');
 
   const counts = new Map<string, number>();
+  const lastVotedAt = new Map<string, string>();
   for (const v of votes) {
     const id = v.recommendation_id as string;
     counts.set(id, (counts.get(id) ?? 0) + 1);
+    lastVotedAt.set(id, v.created_at as string); // ascending 정렬이므로 마지막이 최신
   }
   const maxCount = Math.max(...counts.values());
   const tiedIds = [...counts.entries()]
     .filter(([, c]) => c === maxCount)
-    .map(([id]) => id)
-    .sort();
+    .map(([id]) => id);
 
-  if (tiedIds.length > 1 && !forceWinnerId) {
-    return { isTied: true, tiedIds, voteCount: maxCount };
-  }
-
-  let winnerId: string;
-  if (forceWinnerId) {
-    // 세션 소속 recommendation인지 DB에서 먼저 검증
-    const { data: recCheck } = await supabase
-      .from('recommendations')
-      .select('id')
-      .eq('session_id', sessionId)
-      .eq('id', forceWinnerId)
-      .single();
-    if (!recCheck)
-      throw new FinalizeError('forceWinnerId가 이 세션의 후보가 아닙니다', 400, 'INVALID_WINNER');
-    if (!tiedIds.includes(forceWinnerId))
-      throw new FinalizeError('forceWinnerId가 동점 후보에 없습니다', 400, 'INVALID_WINNER');
-    winnerId = forceWinnerId;
-  } else {
-    winnerId = tiedIds[0]!;
-  }
+  // 동점 시 가장 마지막에 투표된 식당으로 자동 결정
+  const winnerId = tiedIds.length === 1
+    ? tiedIds[0]!
+    : tiedIds.sort((a, b) =>
+        (lastVotedAt.get(b) ?? '').localeCompare(lastVotedAt.get(a) ?? ''),
+      )[0]!;
 
   const { error: updateErr } = await supabase
     .from('sessions')

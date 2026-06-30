@@ -280,8 +280,6 @@ app.post('/sessions/:id/close', requireToss, async (c) => {
 app.post('/sessions/:id/finalize', requireToss, async (c) => {
   const sessionId = c.req.param('id');
   const userKey = c.get('userKey') as number;
-  const body = await c.req.json<{ forceWinnerId?: string }>().catch(() => ({}));
-
   const { data: session } = await supabase
     .from('sessions')
     .select('host_user_key')
@@ -293,7 +291,7 @@ app.post('/sessions/:id/finalize', requireToss, async (c) => {
     return c.json({ code: 'FORBIDDEN', message: '생성자만 집계할 수 있습니다' }, 403);
 
   try {
-    const result = await finalizeSession(sessionId, body?.forceWinnerId);
+    const result = await finalizeSession(sessionId);
     return c.json(result);
   } catch (err) {
     if (err instanceof FinalizeError) {
