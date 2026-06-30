@@ -1,9 +1,9 @@
 name: Deploy (Supabase Edge Function)
 
-# feat/edge-functions 푸시 시 api 함수 자동 배포 + 수동 실행도 지원.
+# main 푸시 시 api 함수 자동 배포 + 수동 실행도 지원.
 on:
   push:
-    branches: [feat/edge-functions]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
