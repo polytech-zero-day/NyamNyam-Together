@@ -12,7 +12,7 @@ const PLACES_BASE = 'https://places.googleapis.com/v1';
 const DISCOVERY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_RADIUS_M = 500;
 const NEARBY_MAX_RESULTS = 20;
-const GOOGLE_TIMEOUT_MS = 5_000;
+const GOOGLE_TIMEOUT_MS = 8_000;
 
 const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? '';
 
@@ -270,6 +270,10 @@ export async function placeDetails(googlePlaceIds: string[]): Promise<Map<string
           },
           signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
         });
+        if (!res.ok) {
+          console.error(`Places Details API 오류 ${res.status} for ${id}`);
+          return;
+        }
         const p = await res.json() as GooglePlace;
         const imageUrl = p.photos?.[0]?.name
           ? await fetchPhotoUri(p.photos[0].name)
